@@ -1,0 +1,17 @@
+backend/venv/
+backend/__pycache__/
+
+# Abaikan file rahasia (API Key & Password DB)
+backend/.env
+frontend/.env
+
+# Abaikan folder library Node.js (Sangat Berat!)
+frontend/node_modules/
+
+# Abaikan folder build
+frontend/dist/
+
+# Abaikan file sistem Mac/Windows
+.DS_Store
+Thumbs.db
+```
