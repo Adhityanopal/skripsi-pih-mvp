@@ -630,3 +630,5 @@ async def generate_division_report(
         if hasattr(response, 'prompt_feedback'):
              print(f"         Prompt Feedback: {response.prompt_feedback}")
         raise HTTPException(status_code=500, detail=f"Gagal menghasilkan laporan Divisi dari LLM. Error: {str(e)}")
+
+# Update deploy fix routing
