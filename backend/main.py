@@ -439,5 +439,3 @@ async def generate_division_report(
         return json.loads(response.text)
     except Exception as e:
         raise HTTPException(500, f"LLM Error: {str(e)}")
-
-    # Force update vercel trigger
