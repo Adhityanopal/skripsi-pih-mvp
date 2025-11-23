@@ -106,9 +106,7 @@ app = FastAPI(title="API Sistem Pelaporan Kinerja PIH (MVP Opsi D)")
 
 app.add_middleware(
     CORSMiddleware,
-    # --- LANGSUNG TULIS ["*"] DI SINI ---
     allow_origins=["*"], 
-    # ------------------------------------
     allow_credentials=True,
     allow_methods=["*"], 
     allow_headers=["*"], 
