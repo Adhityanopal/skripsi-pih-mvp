@@ -437,3 +437,52 @@ async def generate_division_report(
     except Exception as e:
         raise HTTPException(500, f"LLM Error: {str(e)}")
     #tambah
+
+    # --- TAMBAHAN UNTUK FITUR KELOLA AKUN (CRUD USER) ---
+
+@app.put("/users/{user_id}", response_model=UserRead)
+def update_user(
+    *,
+    session: Session = Depends(get_session),
+    user_id: int,
+    user_update: UserUpdate,
+    current_manager: User = Depends(get_current_active_manager) # Hanya Manajer
+):
+    db_user = session.get(User, user_id)
+    if not db_user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    user_data = user_update.model_dump(exclude_unset=True)
+    
+    # Jika password diubah, hash dulu
+    if "password" in user_data and user_data["password"]:
+        hashed_password = get_password_hash(user_data["password"])
+        user_data["hashed_password"] = hashed_password
+        del user_data["password"]
+        
+    for key, value in user_data.items():
+        setattr(db_user, key, value)
+        
+    session.add(db_user)
+    session.commit()
+    session.refresh(db_user)
+    return db_user
+
+@app.delete("/users/{user_id}")
+def delete_user(
+    *,
+    session: Session = Depends(get_session),
+    user_id: int,
+    current_manager: User = Depends(get_current_active_manager) # Hanya Manajer
+):
+    user = session.get(User, user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    # Cegah manajer menghapus dirinya sendiri
+    if user.id == current_manager.id:
+         raise HTTPException(status_code=400, detail="Tidak bisa menghapus akun sendiri")
+         
+    session.delete(user)
+    session.commit()
+    return {"ok": True}

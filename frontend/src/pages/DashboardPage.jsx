@@ -16,6 +16,7 @@ import AddTaskForm from '../components/AddTaskForm';
 import ReviewTaskForm from '../components/ReviewTaskForm';
 import CompleteTaskModal from '../components/CompleteTaskModal';
 import ReportGenerator from '../components/ReportGenerator';
+import UserManagement from '../components/UserManagement';
 
 // Ambil URL API
 const API_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000';
@@ -124,6 +125,7 @@ function DashboardPage({ user, usersList, onLogout }) {
         <TabList mb='1em'>
           <Tab _selected={{ color: 'white', bg: 'teal.500' }}>Daftar Tugas</Tab>
           {user?.role !== 'intern' && <Tab _selected={{ color: 'white', bg: 'teal.500' }}>Laporan Kinerja</Tab>}
+          {user?.role !== 'intern' && <Tab _selected={{ color: 'white', bg: 'teal.500' }}>Kelola Tim</Tab>}
         </TabList>
 
         <TabPanels>
@@ -219,7 +221,10 @@ function DashboardPage({ user, usersList, onLogout }) {
           {/* PANEL 2: LAPORAN */}
           {user?.role !== 'intern' && (
             <TabPanel p={0}>
-              <ReportGenerator users={usersList} /> 
+              <UserManagement 
+                users={usersList} 
+                onRefresh={() => window.location.reload()} 
+              /> 
             </TabPanel>
           )}
         </TabPanels>
