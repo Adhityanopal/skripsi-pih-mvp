@@ -1,5 +1,4 @@
-# main.py - FULL CODE FINAL (MVP Opsi D)
-# Termasuk perbaikan CORS, Auth, dan Logic Laporan
+# main.py - FULL CODE FINAL (Update Model Gemini 2.5 Flash)
 
 # --- 1. IMPOR LIBRARY ---
 from fastapi import FastAPI, Depends, HTTPException, status
@@ -23,12 +22,11 @@ from auth import (
     create_access_token, 
     get_current_user,
     get_current_active_manager,
-    Token # Diimpor dari auth.py
+    Token
 )
 
-# --- 3. SKEMA PYDANTIC (Input/Output API) ---
+# --- 3. SKEMA PYDANTIC ---
 
-# User Schemas
 class UserRead(SQLModel):
     id: int
     nama: str
@@ -50,7 +48,6 @@ class UserUpdate(SQLModel):
     role: Optional[str] = None
     divisi: Optional[str] = None
 
-# Project Schemas
 class ProjectCreate(SQLModel):
     nama: str
 
@@ -58,7 +55,6 @@ class ProjectRead(SQLModel):
     id: int
     nama: str
 
-# Task Schemas
 class TaskCreate(SQLModel):
     title: str
     description: Optional[str] = None
@@ -89,11 +85,10 @@ class TaskReview(SQLModel):
     rating: int = Field(ge=1, le=5)
     feedback: str
 
-# Report Schemas
 class ReportRequest(SQLModel):
     user_id: int
-    start_date: str # "YYYY-MM-DD"
-    end_date: str   # "YYYY-MM-DD"
+    start_date: str
+    end_date: str
 
 class DivisionReportRequest(SQLModel):
     divisi: str 
@@ -103,9 +98,12 @@ class DivisionReportRequest(SQLModel):
 # --- 4. INISIALISASI APP & CORS ---
 
 app = FastAPI(title="API Sistem Pelaporan Kinerja PIH (MVP Opsi D)")
+
+origins = ["*"]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"], 
+    allow_origins=origins,
     allow_credentials=True,
     allow_methods=["*"], 
     allow_headers=["*"], 
@@ -291,6 +289,7 @@ KPI_TARGETS = {
 }
 CORE_VALUES = ["Creative", "Integrity", "Resilient", "Collaborative", "Innovative"]
 
+# --- Laporan Individu ---
 def create_kpi_prompt(user_name: str, divisi: str, kpi_data: dict) -> str:
     prompt = f"""
     Anda adalah Manajer HR. Evaluasi {user_name} dari Divisi {divisi}.
@@ -337,6 +336,7 @@ async def generate_report(
     for task in completed_tasks:
         if task.completed_at and task.created_at:
             total_lead_time_seconds += (task.completed_at - task.created_at).total_seconds()
+        
         if task.due_date and task.completed_at:
             if task.completed_at.date() <= task.due_date: on_time_tasks += 1
         if task.rating:
@@ -358,12 +358,16 @@ async def generate_report(
 
     prompt = create_kpi_prompt(user_to_report.nama, user_to_report.divisi, kpi_data)
     try:
-        model = genai.GenerativeModel('models/gemini-2.5-flash-preview-09-2025')
+        # --- UPDATE MODEL DI SINI ---
+        model_name = 'models/gemini-2.5-flash' 
+        # ----------------------------
+        model = genai.GenerativeModel(model_name)
         response = await model.generate_content_async(prompt, generation_config={"response_mime_type": "application/json"})
         return json.loads(response.text)
     except Exception as e:
         raise HTTPException(500, f"LLM Error: {str(e)}")
 
+# --- Laporan Divisi ---
 def create_division_kpi_prompt(divisi_name: str, kpi_data: dict) -> str:
     prompt = f"""
     Evaluasi Divisi {divisi_name}. Values: {CORE_VALUES}. Data: {kpi_data}.
@@ -431,58 +435,11 @@ async def generate_division_report(
 
     prompt = create_division_kpi_prompt(request.divisi, kpi_data)
     try:
-        model = genai.GenerativeModel('models/gemini-2.5-flash-preview-09-2025')
+        # --- UPDATE MODEL DI SINI JUGA ---
+        model_name = 'models/gemini-2.5-flash'
+        # ---------------------------------
+        model = genai.GenerativeModel(model_name)
         response = await model.generate_content_async(prompt, generation_config={"response_mime_type": "application/json"})
         return json.loads(response.text)
     except Exception as e:
         raise HTTPException(500, f"LLM Error: {str(e)}")
-    #tambah
-
-    # --- TAMBAHAN UNTUK FITUR KELOLA AKUN (CRUD USER) ---
-
-@app.put("/users/{user_id}", response_model=UserRead)
-def update_user(
-    *,
-    session: Session = Depends(get_session),
-    user_id: int,
-    user_update: UserUpdate,
-    current_manager: User = Depends(get_current_active_manager) # Hanya Manajer
-):
-    db_user = session.get(User, user_id)
-    if not db_user:
-        raise HTTPException(status_code=404, detail="User not found")
-    
-    user_data = user_update.model_dump(exclude_unset=True)
-    
-    # Jika password diubah, hash dulu
-    if "password" in user_data and user_data["password"]:
-        hashed_password = get_password_hash(user_data["password"])
-        user_data["hashed_password"] = hashed_password
-        del user_data["password"]
-        
-    for key, value in user_data.items():
-        setattr(db_user, key, value)
-        
-    session.add(db_user)
-    session.commit()
-    session.refresh(db_user)
-    return db_user
-
-@app.delete("/users/{user_id}")
-def delete_user(
-    *,
-    session: Session = Depends(get_session),
-    user_id: int,
-    current_manager: User = Depends(get_current_active_manager) # Hanya Manajer
-):
-    user = session.get(User, user_id)
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-    
-    # Cegah manajer menghapus dirinya sendiri
-    if user.id == current_manager.id:
-         raise HTTPException(status_code=400, detail="Tidak bisa menghapus akun sendiri")
-         
-    session.delete(user)
-    session.commit()
-    return {"ok": True}
