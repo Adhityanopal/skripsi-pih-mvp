@@ -108,9 +108,16 @@ class DivisionReportRequest(SQLModel):
 # --- 4. INISIALISASI APLIKASI DAN KONFIGURASI ---
 app = FastAPI(title="API Sistem Pelaporan Kinerja PIH (MVP Opsi D)")
 
-# Konfigurasi CORS (SANGAT PENTING UNTUK DEPLOYMENT)
-origins = ["*"] # Izinkan semua origin (paling mudah untuk skripsi)
-# -------------------------
+# --- KONFIGURASI CORS SAPU JAGAT (ALLOW ALL) ---
+# Kita izinkan SEMUA origin (*) supaya tidak pusing dengan nama domain Vercel yang berubah-ubah
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # <--- INI KUNCINYA: Buka untuk semua
+    allow_credentials=True,
+    allow_methods=["*"],  # Buka semua method (GET, POST, PUT, DELETE)
+    allow_headers=["*"],  # Buka semua header
+)
+# ------------------------------------------------
 
 app.add_middleware(
     CORSMiddleware,
