@@ -104,13 +104,11 @@ class DivisionReportRequest(SQLModel):
 
 app = FastAPI(title="API Sistem Pelaporan Kinerja PIH (MVP Opsi D)")
 
-# === [BAGIAN KRUSIAL: DEFINISI VARIABEL DULU] ===
-origins = ["*"]
-# ================================================
-
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins, # <-- Variabel ini sudah didefinisikan di baris atas
+    # --- LANGSUNG TULIS ["*"] DI SINI ---
+    allow_origins=["*"], 
+    # ------------------------------------
     allow_credentials=True,
     allow_methods=["*"], 
     allow_headers=["*"], 
