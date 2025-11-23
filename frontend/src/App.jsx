@@ -69,37 +69,49 @@ function App() {
     }
   };
 
-  // --- Fungsi untuk LOGIN ---
-  const handleLogin = async (email, password) => {
-    try {
-      const params = new URLSearchParams();
-      params.append('username', email);
-      params.append('password', password);
+// --- Fungsi untuk LOGIN ---
+const handleLogin = async (email, password) => {
+    
+  // CCTV 1: Cek apakah fungsi ini dipanggil
+  console.log("1. Tombol Login Ditekan!");
+  console.log("2. Email:", email);
+  console.log("3. URL Backend:", import.meta.env.VITE_API_URL);
 
-      const response = await axios.post(
-        `${import.meta.env.VITE_API_URL}/token`, 
-        params,
-        { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } }
-      );
-      const newToken = response.data.access_token;
-      
-      setToken(newToken);
-      localStorage.setItem('authToken', newToken);
-      axios.defaults.headers.common['Authorization'] = `Bearer ${newToken}`;
-      
-      // Ambil data user berdasarkan peran
-      const fetchSuccess = await fetchDataBasedOnRole(newToken);
-      
-      if (!fetchSuccess) {
-         throw new Error("Gagal mengambil data user setelah login.");
-      }
-      return true; // Login sukses
-    } catch (error) {
-      console.error("Login gagal:", error);
-      handleLogout(); 
-      return false;
-    }
-  };
+  try {
+    const params = new URLSearchParams();
+    params.append('username', email);
+    params.append('password', password);
+
+    // CCTV 2: Sebelum kirim axios
+    console.log("4. Mengirim request ke Backend...");
+
+    const response = await axios.post(
+      `${import.meta.env.VITE_API_URL}/token`, 
+      params,
+      { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } }
+    );
+
+    // CCTV 3: Kalau berhasil
+    console.log("5. BERHASIL! Respon:", response);
+
+    const newToken = response.data.access_token;
+    
+    setToken(newToken);
+    localStorage.setItem('authToken', newToken);
+    axios.defaults.headers.common['Authorization'] = `Bearer ${newToken}`;
+    
+    await fetchInitialData(); 
+    return true; 
+
+  } catch (error) {
+    // CCTV 4: Kalau Gagal
+    console.error("6. ERROR TERJADI:", error);
+    console.log("7. Detail Error:", error.response);
+    
+    handleLogout(); 
+    return false; 
+  }
+};
 
   // --- Fungsi untuk LOGOUT ---
   const handleLogout = () => {
