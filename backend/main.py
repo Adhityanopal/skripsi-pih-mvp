@@ -103,7 +103,6 @@ class DivisionReportRequest(SQLModel):
 # --- 4. INISIALISASI APP & CORS ---
 
 app = FastAPI(title="API Sistem Pelaporan Kinerja PIH (MVP Opsi D)")
-
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"], 
