@@ -1,4 +1,5 @@
-# main.py - FULL CODE FINAL (Versi Robust Date & Model Stabil)
+# main.py - FULL CODE FINAL (Versi Gemini 2.5 Flash)
+# Sudah termasuk perbaikan bug tanggal (TypeError) dan model terbaru.
 
 # --- 1. IMPOR LIBRARY ---
 from fastapi import FastAPI, Depends, HTTPException, status
@@ -99,6 +100,7 @@ class DivisionReportRequest(SQLModel):
 
 app = FastAPI(title="API Sistem Pelaporan Kinerja PIH")
 
+# Konfigurasi CORS Sapu Jagat (Allow All)
 origins = ["*"]
 
 app.add_middleware(
@@ -273,22 +275,20 @@ async def generate_report(request: ReportRequest, session: Session = Depends(get
     feedbacks = []
 
     for t in tasks:
-        # --- LOGIKA TANGGAL ROBUST ---
-        # Pastikan completed_at menjadi date
+        # --- LOGIKA TANGGAL ROBUST (Anti-Error) ---
         comp_date = t.completed_at.date() if isinstance(t.completed_at, datetime) else t.completed_at
         
-        # Pastikan created_at menjadi datetime (untuk hitung detik)
-        # (Biasanya created_at di DB adalah datetime)
         if t.completed_at and t.created_at:
-            lead_secs += (t.completed_at - t.created_at).total_seconds()
+            # Pastikan keduanya datetime untuk pengurangan
+            c_at = t.created_at if isinstance(t.created_at, datetime) else datetime.combine(t.created_at, datetime.min.time())
+            cmp_at = t.completed_at if isinstance(t.completed_at, datetime) else datetime.combine(t.completed_at, datetime.min.time())
+            lead_secs += (cmp_at - c_at).total_seconds()
             
-        # Cek Deadline
         if t.due_date:
-            # Pastikan due_date menjadi date
             due = t.due_date.date() if isinstance(t.due_date, datetime) else t.due_date
             if comp_date and due and comp_date <= due:
                 on_time += 1
-        # -----------------------------
+        # ------------------------------------------
 
         if t.rating: ratings.append(t.rating)
         if t.feedback: feedbacks.append(t.feedback)
@@ -305,10 +305,9 @@ async def generate_report(request: ReportRequest, session: Session = Depends(get
         "on_time_percentage": on_time_pct, "feedbacks": feedbacks
     }
 
-    # --- GUNAKAN MODEL STABIL ---
-    # gemini-1.5-flash lebih stabil & support JSON mode
     try:
-        model = genai.GenerativeModel('models/gemini-1.5-flash')
+        # --- MODEL 2.5 FLASH (YANG CANGGIH) ---
+        model = genai.GenerativeModel('models/gemini-2.5-flash')
         response = await model.generate_content_async(
             create_kpi_prompt(user.nama, user.divisi, kpi_data),
             generation_config={"response_mime_type": "application/json"}
@@ -350,17 +349,19 @@ async def generate_division_report(request: DivisionReportRequest, session: Sess
     feedbacks = []
 
     for t in tasks:
-        # --- LOGIKA TANGGAL ROBUST ---
+        # --- LOGIKA TANGGAL ROBUST (Anti-Error) ---
         comp_date = t.completed_at.date() if isinstance(t.completed_at, datetime) else t.completed_at
         
         if t.completed_at and t.created_at:
-            lead_secs += (t.completed_at - t.created_at).total_seconds()
+            c_at = t.created_at if isinstance(t.created_at, datetime) else datetime.combine(t.created_at, datetime.min.time())
+            cmp_at = t.completed_at if isinstance(t.completed_at, datetime) else datetime.combine(t.completed_at, datetime.min.time())
+            lead_secs += (cmp_at - c_at).total_seconds()
             
         if t.due_date:
             due = t.due_date.date() if isinstance(t.due_date, datetime) else t.due_date
             if comp_date and due and comp_date <= due:
                 on_time += 1
-        # -----------------------------
+        # ------------------------------------------
 
         if t.rating: ratings.append(t.rating)
         if t.feedback: feedbacks.append(t.feedback)
@@ -380,7 +381,8 @@ async def generate_division_report(request: DivisionReportRequest, session: Sess
     }
 
     try:
-        model = genai.GenerativeModel('models/gemini-1.5-flash')
+        # --- MODEL 2.5 FLASH (YANG CANGGIH) ---
+        model = genai.GenerativeModel('models/gemini-2.5-flash')
         response = await model.generate_content_async(
             create_division_kpi_prompt(request.divisi, kpi_data),
             generation_config={"response_mime_type": "application/json"}
