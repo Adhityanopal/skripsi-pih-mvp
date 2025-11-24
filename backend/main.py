@@ -1,5 +1,4 @@
-# main.py - FULL CODE FINAL (Versi Gemini 2.5 Flash - KOREKSI)
-# Sudah termasuk perbaikan bug tanggal (TypeError) dan model 2.5.
+# main.py - FULL CODE FINAL (Versi Stabil, Lengkap & Bebas Syntax Error)
 
 # --- 1. IMPOR LIBRARY ---
 from fastapi import FastAPI, Depends, HTTPException, status
@@ -27,7 +26,7 @@ from auth import (
     Token
 )
 
-# --- 3. SKEMA PYDANTIC ---
+# --- 3. SKEMA PYDANTIC (Input/Output API) ---
 
 class UserRead(SQLModel):
     id: int
@@ -102,6 +101,7 @@ class DivisionReportRequest(SQLModel):
 
 app = FastAPI(title="API Sistem Pelaporan Kinerja PIH")
 
+# Konfigurasi CORS Sapu Jagat (Allow All)
 origins = ["*"]
 
 app.add_middleware(
@@ -253,6 +253,134 @@ KPI_TARGETS = {
 }
 CORE_VALUES = ["Creative", "Integrity", "Resilient", "Collaborative", "Innovative"]
 
+# Fungsi pembersih JSON (FIX SYNTAX ERROR DISINI)
 def clean_json_string(json_str: str) -> str:
     json_str = json_str.strip()
-    if json_str.startswith("
+    if json_str.startswith("```json"):
+        json_str = json_str[7:]
+    elif json_str.startswith("```"):
+        json_str = json_str[3:]
+    
+    if json_str.endswith("```"):
+        json_str = json_str[:-3]
+    return json_str.strip()
+
+def create_kpi_prompt(user_name: str, divisi: str, kpi_data: dict) -> str:
+    return f"""
+    Anda adalah Manajer HR. Evaluasi kinerja: {user_name} (Divisi: {divisi}).
+    DATA KINERJA:
+    - Target KPI: {kpi_data['kpi_target']}
+    - Aktual Selesai: {kpi_data['total_tasks']}
+    - Deadline Tepat: {kpi_data['on_time_percentage']}%
+    - Rating: {kpi_data['avg_rating']} / 5
+    - Feedback: {kpi_data['feedbacks']}
+    
+    OUTPUT JSON MURNI:
+    {{
+        "narrative_report": "Tulis 3 paragraf (General, Keberhasilan, Saran).",
+        "chart_data": {{ "label": "Total Tugas Selesai", "actual": {kpi_data['total_tasks']}, "target": {kpi_data['kpi_target']} }},
+        "value_scores": [ {{ "value_name": "Creative", "score": 0, "justification": "..." }}, ... ]
+    }}
+    """
+
+@app.post("/generate-report")
+async def generate_report(request: ReportRequest, session: Session = Depends(get_session), current_manager: User = Depends(get_current_active_manager)):
+    user = session.get(User, request.user_id)
+    if not user: raise HTTPException(404, "User not found")
+    try:
+        start = date.fromisoformat(request.start_date)
+        end = date.fromisoformat(request.end_date)
+    except: raise HTTPException(400, "Format tanggal salah")
+
+    tasks = session.exec(select(Task).where(
+        Task.assignee_id == request.user_id, Task.status == "Reviewed",
+        Task.completed_at >= start, Task.completed_at <= end
+    )).all()
+
+    if not tasks: raise HTTPException(404, "Tidak ada tugas Reviewed")
+
+    total = len(tasks)
+    on_time = 0
+    lead_secs = 0
+    ratings = []
+    feedbacks = []
+
+    for t in tasks:
+        comp_date = t.completed_at.date() if isinstance(t.completed_at, datetime) else t.completed_at
+        if t.completed_at and t.created_at:
+            c_at = t.created_at if isinstance(t.created_at, datetime) else datetime.combine(t.created_at, datetime.min.time())
+            cmp_at = t.completed_at if isinstance(t.completed_at, datetime) else datetime.combine(t.completed_at, datetime.min.time())
+            lead_secs += (cmp_at - c_at).total_seconds()
+        if t.due_date:
+            due = t.due_date.date() if isinstance(t.due_date, datetime) else t.due_date
+            if comp_date and due and comp_date <= due: on_time += 1
+        if t.rating: ratings.append(t.rating)
+        if t.feedback: feedbacks.append(t.feedback)
+
+    avg_lead = (lead_secs / total / 86400) if total > 0 else 0
+    avg_rate = (sum(ratings) / len(ratings)) if ratings else 0
+    on_time_pct = (on_time / total * 100) if total > 0 else 0
+    target = KPI_TARGETS.get(user.divisi, 5)
+
+    kpi_data = { "start_date": request.start_date, "end_date": request.end_date, "total_tasks": total, "kpi_target": target, "avg_lead_time_days": avg_lead, "avg_rating": avg_rate, "on_time_percentage": on_time_pct, "feedbacks": feedbacks }
+
+    try:
+        # MODEL 2.5 FLASH
+        model = genai.GenerativeModel('models/gemini-2.5-flash')
+        response = await model.generate_content_async(create_kpi_prompt(user.nama, user.divisi, kpi_data), generation_config={"response_mime_type": "application/json"})
+        return json.loads(clean_json_string(response.text))
+    except Exception as e:
+        raise HTTPException(500, f"LLM Error: {str(e)}")
+
+def create_division_kpi_prompt(divisi: str, kpi_data: dict) -> str:
+    return f"""
+    Evaluasi Divisi: {divisi}. Data: {kpi_data}.
+    OUTPUT JSON MURNI: {{ "narrative_report": "...", "chart_data": {{...}}, "value_scores": [...] }}
+    """
+
+@app.post("/generate-report/division")
+async def generate_division_report(request: DivisionReportRequest, session: Session = Depends(get_session), current_manager: User = Depends(get_current_active_manager)):
+    try:
+        start = date.fromisoformat(request.start_date)
+        end = date.fromisoformat(request.end_date)
+    except: raise HTTPException(400, "Format tanggal salah")
+
+    users = session.exec(select(User).where(User.divisi == request.divisi)).all()
+    if not users: raise HTTPException(404, "Divisi kosong")
+    u_ids = [u.id for u in users]
+    tasks = session.exec(select(Task).where(Task.assignee_id.in_(u_ids), Task.status == "Reviewed", Task.completed_at >= start, Task.completed_at <= end)).all()
+    if not tasks: raise HTTPException(404, "Tidak ada tugas Reviewed")
+
+    total = len(tasks)
+    on_time = 0
+    lead_secs = 0
+    ratings = []
+    feedbacks = []
+
+    for t in tasks:
+        comp_date = t.completed_at.date() if isinstance(t.completed_at, datetime) else t.completed_at
+        if t.completed_at and t.created_at:
+            c_at = t.created_at if isinstance(t.created_at, datetime) else datetime.combine(t.created_at, datetime.min.time())
+            cmp_at = t.completed_at if isinstance(t.completed_at, datetime) else datetime.combine(t.completed_at, datetime.min.time())
+            lead_secs += (cmp_at - c_at).total_seconds()
+        if t.due_date:
+            due = t.due_date.date() if isinstance(t.due_date, datetime) else t.due_date
+            if comp_date and due and comp_date <= due: on_time += 1
+        if t.rating: ratings.append(t.rating)
+        if t.feedback: feedbacks.append(t.feedback)
+
+    avg_lead = (lead_secs / total / 86400) if total > 0 else 0
+    avg_rate = (sum(ratings) / len(ratings)) if ratings else 0
+    on_time_pct = (on_time / total * 100) if total > 0 else 0
+    interns = sum(1 for u in users if u.role == 'intern')
+    target_total = KPI_TARGETS.get(request.divisi, 5) * interns
+
+    kpi_data = { "start_date": request.start_date, "end_date": request.end_date, "total_members": interns, "total_tasks": total, "kpi_target_total": target_total, "avg_lead_time_days": avg_lead, "avg_rating": avg_rate, "on_time_percentage": on_time_pct, "feedbacks": feedbacks }
+
+    try:
+        # MODEL 2.5 FLASH
+        model = genai.GenerativeModel('models/gemini-2.5-flash')
+        response = await model.generate_content_async(create_division_kpi_prompt(request.divisi, kpi_data), generation_config={"response_mime_type": "application/json"})
+        return json.loads(clean_json_string(response.text))
+    except Exception as e:
+        raise HTTPException(500, f"LLM Error: {str(e)}")
