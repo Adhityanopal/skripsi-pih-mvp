@@ -1,5 +1,7 @@
-# main.py - FULL CODE FINAL (Support Revisi & Likert)
+# main.py - FINAL FIX: CORS SAPU JAGAT
+# Memaksa backend menerima request dari domain manapun (*)
 
+# --- 1. IMPOR LIBRARY ---
 from fastapi import FastAPI, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
 from fastapi.middleware.cors import CORSMiddleware
@@ -10,21 +12,17 @@ import google.generativeai as genai
 import json
 import re 
 
+# --- 2. IMPOR LOKAL ---
 from config import settings
 from database import create_db_and_tables, get_session, engine
-from models import (
-    User, Project, Task 
-)
+from models import (User, Project, Task)
 from auth import (
-    get_password_hash, 
-    verify_password, 
-    create_access_token, 
-    get_current_user,
-    get_current_active_manager,
-    Token
+    get_password_hash, verify_password, create_access_token, 
+    get_current_user, get_current_active_manager, Token
 )
 
-# --- SKEMA PYDANTIC ---
+# --- 3. SKEMA PYDANTIC ---
+# (Semua skema sama seperti sebelumnya)
 
 class UserRead(SQLModel):
     id: int
@@ -80,11 +78,10 @@ class TaskRead(SQLModel):
 class TaskSubmission(SQLModel):
     submission_link: str
 
-# UPDATE: Rating Opsional & Tambah Action
 class TaskReview(SQLModel):
     rating: Optional[int] = Field(default=None, ge=1, le=5)
     feedback: str
-    action: str # "approve" atau "revise"
+    action: str
 
 class ReportRequest(SQLModel):
     user_id: int
@@ -96,16 +93,19 @@ class DivisionReportRequest(SQLModel):
     start_date: str 
     end_date: str   
 
-# --- APP & CORS ---
+# --- 4. INISIALISASI APP & CORS (BAGIAN PENTING!) ---
+
 app = FastAPI(title="API Sistem Pelaporan Kinerja PIH")
-origins = ["*"]
+
+# --- CORS FIX: ALLOW ALL (SAPU JAGAT) ---
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,
+    allow_origins=["*"],  # <--- WAJIB ["*"] AGAR SEMUA DOMAIN BISA MASUK
     allow_credentials=True,
-    allow_methods=["*"], 
-    allow_headers=["*"], 
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
+# ----------------------------------------
 
 try:
     genai.configure(api_key=settings.GEMINI_API_KEY)
@@ -117,7 +117,7 @@ except Exception as e:
 def on_startup():
     create_db_and_tables()
 
-# --- ENDPOINT AUTH & USER ---
+# --- 5. ENDPOINT AUTH & USER ---
 @app.post("/token", response_model=Token)
 async def login_for_access_token(session: Session = Depends(get_session), form_data: OAuth2PasswordRequestForm = Depends()):
     statement = select(User).where(User.email == form_data.username)
@@ -134,6 +134,7 @@ def create_user(*, session: Session = Depends(get_session), user_data: UserCreat
     statement_check = select(User).where(User.email == user_data.email)
     if session.exec(statement_check).first():
         raise HTTPException(status_code=400, detail="Email sudah terdaftar")
+        
     hashed_password = get_password_hash(user_data.password)
     user_dict = user_data.model_dump()
     user_dict["hashed_password"] = hashed_password
@@ -175,7 +176,7 @@ def delete_user(*, session: Session = Depends(get_session), user_id: int, curren
     session.commit()
     return {"ok": True}
 
-# --- ENDPOINT PROJECT & TASK ---
+# --- 6. ENDPOINT PROJECT & TASK ---
 @app.post("/projects", response_model=ProjectRead)
 def create_project(*, session: Session = Depends(get_session), project_data: ProjectCreate, current_manager: User = Depends(get_current_active_manager)):
     db_project = Project.model_validate(project_data)
@@ -202,16 +203,12 @@ def read_my_tasks(session: Session = Depends(get_session), current_user: User = 
 def read_all_tasks(session: Session = Depends(get_session), current_manager: User = Depends(get_current_active_manager)):
     return session.exec(select(Task)).all()
 
-# UPDATE: Izinkan submit jika status Need Revision
 @app.put("/tasks/{task_id}/complete", response_model=TaskRead)
 def complete_task(*, session: Session = Depends(get_session), task_id: int, link: TaskSubmission, current_user: User = Depends(get_current_user)):
     db_task = session.get(Task, task_id)
     if not db_task: raise HTTPException(404, "Task not found")
     if db_task.assignee_id != current_user.id: raise HTTPException(403, "Bukan tugas Anda")
-    
-    # Boleh submit jika To Do ATAU Need Revision
     if db_task.status in ["Done", "Reviewed"]: raise HTTPException(400, "Sudah selesai")
-
     db_task.status = "Done"
     db_task.completed_at = datetime.utcnow()
     db_task.submission_link = link.submission_link
@@ -220,18 +217,16 @@ def complete_task(*, session: Session = Depends(get_session), task_id: int, link
     session.refresh(db_task)
     return db_task
 
-# UPDATE: Support Revisi & Approve
 @app.put("/tasks/{task_id}/review", response_model=TaskRead)
 def review_task(*, session: Session = Depends(get_session), task_id: int, review_data: TaskReview, current_manager: User = Depends(get_current_active_manager)):
     db_task = session.get(Task, task_id)
     if not db_task: raise HTTPException(404, "Task not found")
+    if db_task.status == "To Do": raise HTTPException(400, "Tugas belum selesai")
     
-    if db_task.status == "To Do": raise HTTPException(400, "Tugas belum selesai dikerjakan")
-
     if review_data.action == "revise":
         db_task.status = "Need Revision"
         db_task.feedback = review_data.feedback
-        db_task.rating = None # Reset rating
+        db_task.rating = None 
     elif review_data.action == "approve":
         if review_data.rating is None: raise HTTPException(400, "Rating wajib diisi untuk ACC")
         db_task.status = "Reviewed"
@@ -245,7 +240,7 @@ def review_task(*, session: Session = Depends(get_session), task_id: int, review
     session.refresh(db_task)
     return db_task
 
-# --- LLM REPORTING ---
+# --- 7. LLM REPORTING ---
 KPI_TARGETS = {
     "GD": 6, "JO": 2, "SMO": 6, "PH": 1, "EPM": 3, "CC": 3, "VO": 0,
     "FA": 0, "PR": 2, "Staf": 0, "Pimpinan": 0, "PM": 0, "Default": 5
@@ -255,9 +250,3 @@ CORE_VALUES = ["Creative", "Integrity", "Resilient", "Collaborative", "Innovativ
 def clean_json_string(json_str: str) -> str:
     json_str = json_str.strip()
     if json_str.startswith("
-http://googleusercontent.com/immersive_entry_chip/0
-http://googleusercontent.com/immersive_entry_chip/1
-http://googleusercontent.com/immersive_entry_chip/2
-
-Langsung **Simpan All** dan **Push ke GitHub**.
-Setelah redeploy, fitur Revisi dan Likert Scale sudah aktif! 🚀
