@@ -2,11 +2,12 @@ import React, { useState, useEffect } from 'react';
 import {
   Modal, ModalOverlay, ModalContent, ModalHeader, ModalFooter, ModalBody, ModalCloseButton,
   FormControl, FormLabel, Button, VStack, useToast, Textarea, 
-  Radio, RadioGroup, Stack, Box, Text, Alert, AlertIcon
+  Radio, RadioGroup, Stack, Box, Text, Alert, AlertIcon,
+  Flex // <-- INI YANG HILANG SEBELUMNYA (PENTING!)
 } from '@chakra-ui/react';
 import axios from 'axios';
 
-const API_URL = import.meta.env.VITE_API_URL;
+const API_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000';
 
 function ReviewTaskForm({ isOpen, onClose, task, onTaskReviewed }) {
   const [rating, setRating] = useState('5');
@@ -26,7 +27,12 @@ function ReviewTaskForm({ isOpen, onClose, task, onTaskReviewed }) {
   const handleSubmit = async () => {
     // Validasi: Jika revisi, wajib ada feedback
     if (!feedback && action === 'revise') {
-        toast({title: "Wajib isi catatan revisi!", description: "Beritahu intern apa yang salah.", status: "warning", position: "top"});
+        toast({
+          title: "Wajib isi catatan revisi!", 
+          description: "Beritahu intern apa yang salah.", 
+          status: "warning", 
+          position: "top"
+        });
         return;
     }
     
@@ -43,12 +49,22 @@ function ReviewTaskForm({ isOpen, onClose, task, onTaskReviewed }) {
       const msgTitle = action === 'approve' ? "Tugas Dinilai & Selesai" : "Dikembalikan untuk Revisi";
       const msgStatus = action === 'approve' ? "success" : "info";
 
-      toast({ title: msgTitle, status: msgStatus, duration: 3000, isClosable: true, position: "top" });
+      toast({ 
+        title: msgTitle, 
+        status: msgStatus, 
+        duration: 3000, 
+        isClosable: true, 
+        position: "top" 
+      });
       onTaskReviewed(response.data); 
       onClose();
     } catch (err) {
       console.error("Error:", err);
-      toast({ title: "Gagal", description: "Terjadi kesalahan saat menyimpan review.", status: "error" });
+      toast({ 
+        title: "Gagal", 
+        description: "Terjadi kesalahan saat menyimpan review.", 
+        status: "error" 
+      });
     } finally {
       setIsLoading(false);
     }
@@ -78,6 +94,7 @@ function ReviewTaskForm({ isOpen, onClose, task, onTaskReviewed }) {
             {action === 'approve' ? (
               <FormControl as="fieldset" p={4} bg="yellow.50" borderRadius="md">
                 <FormLabel as="legend" fontWeight="bold" mb={3}>Rating Kualitas (1-5)</FormLabel>
+                
                 {/* UI Likert Scale dengan Pointer Radio */}
                 <RadioGroup onChange={setRating} value={rating}>
                   <Stack direction="row" spacing={0} justify="space-between">
@@ -89,6 +106,8 @@ function ReviewTaskForm({ isOpen, onClose, task, onTaskReviewed }) {
                     ))}
                   </Stack>
                 </RadioGroup>
+                
+                {/* Bagian ini menggunakan Flex, makanya tadi error */}
                 <Flex justify="space-between" mt={1}>
                     <Text fontSize="xs" color="gray.500">Kurang</Text>
                     <Text fontSize="xs" color="gray.500">Sempurna</Text>
