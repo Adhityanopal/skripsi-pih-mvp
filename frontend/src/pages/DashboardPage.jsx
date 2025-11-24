@@ -1,5 +1,5 @@
 // src/pages/DashboardPage.jsx
-// Versi FINAL FIX TABS - Urutan Tab Laporan & Kelola Tim Sudah Benar
+// Versi FINAL + FITUR DETAIL & FILTER 'TUGAS SAYA'
 
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
@@ -7,15 +7,17 @@ import {
   Box, Heading, Text, Button, Spinner, Alert, AlertIcon,
   List, ListItem, ListIcon, IconButton, useToast, useDisclosure,
   Flex, Spacer, Tag, Badge, ButtonGroup,
-  Tabs, TabList, TabPanels, Tab, TabPanel
+  Tabs, TabList, TabPanels, Tab, TabPanel, Tooltip
 } from '@chakra-ui/react';
-import { CheckCircleIcon, TimeIcon, CheckIcon, AddIcon, StarIcon, EditIcon } from '@chakra-ui/icons'; 
+// Tambahkan InfoIcon
+import { CheckCircleIcon, TimeIcon, CheckIcon, AddIcon, StarIcon, EditIcon, InfoIcon } from '@chakra-ui/icons'; 
 
 import AddTaskForm from '../components/AddTaskForm';
 import ReviewTaskForm from '../components/ReviewTaskForm';
 import CompleteTaskModal from '../components/CompleteTaskModal';
 import ReportGenerator from '../components/ReportGenerator';
-import UserManagement from '../components/UserManagement'; // Impor UserManagement
+import UserManagement from '../components/UserManagement';
+import TaskDetailModal from '../components/TaskDetailModal'; // <-- Impor Modal Detail
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000';
 
@@ -24,12 +26,16 @@ function DashboardPage({ user, usersList, onLogout }) {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
   const [filterStatus, setFilterStatus] = useState('all');
+  
   const [currentTask, setCurrentTask] = useState(null); 
   const toast = useToast();
   
   const { isOpen: isAddTaskModalOpen, onOpen: onOpenAddTaskModal, onClose: onCloseAddTaskModal } = useDisclosure();
   const { isOpen: isReviewModalOpen, onOpen: onOpenReviewModal, onClose: onCloseReviewModal } = useDisclosure();
   const { isOpen: isCompleteModalOpen, onOpen: onOpenCompleteModal, onClose: onCloseCompleteModal } = useDisclosure();
+  
+  // Hook untuk Modal Detail
+  const { isOpen: isDetailModalOpen, onOpen: onOpenDetailModal, onClose: onCloseDetailModal } = useDisclosure();
   
   const fetchTasks = async () => {
     setIsLoading(true);
@@ -62,8 +68,12 @@ function DashboardPage({ user, usersList, onLogout }) {
   const handleTaskReviewed = (reviewedTask) => {
     setTasks(prev => prev.map(t => t.id === reviewedTask.id ? reviewedTask : t));
   };
+  
   const openReviewModal = (task) => { setCurrentTask(task); onOpenReviewModal(); };
   const openCompleteModal = (task) => { setCurrentTask(task); onOpenCompleteModal(); };
+  
+  // Fungsi Buka Detail
+  const openDetailModal = (task) => { setCurrentTask(task); onOpenDetailModal(); };
   
   const getAssigneeName = (assigneeId) => {
       if (!usersList) return 'Loading...'; 
@@ -73,6 +83,10 @@ function DashboardPage({ user, usersList, onLogout }) {
 
   const filteredTasks = tasks.filter(task => {
     const status = task.status ? task.status.trim() : "";
+    
+    // Filter 'my_tasks': Hanya tampilkan tugas yang assignee_id nya sama dengan ID user yang login
+    if (filterStatus === 'my_tasks') return task.assignee_id === user.id;
+
     if (filterStatus === 'all') return true;
     if (filterStatus === 'to_do') return status === 'To Do';
     if (filterStatus === 'done') return status === 'Done';
@@ -100,25 +114,36 @@ function DashboardPage({ user, usersList, onLogout }) {
 
       <Tabs isFitted variant='enclosed' colorScheme='teal' isLazy>
         <TabList mb='1em'>
-          {/* TAB 1 */}
           <Tab _selected={{ color: 'white', bg: 'teal.500' }}>Daftar Tugas</Tab>
-          
-          {/* TAB 2 (Hanya Manajer) */}
           {user?.role !== 'intern' && <Tab _selected={{ color: 'white', bg: 'teal.500' }}>Laporan Kinerja</Tab>}
-          
-          {/* TAB 3 (Hanya Manajer) */}
           {user?.role !== 'intern' && <Tab _selected={{ color: 'white', bg: 'teal.500' }}>Kelola Tim</Tab>}
         </TabList>
 
         <TabPanels>
-          
-          {/* --- PANEL 1: Daftar Tugas --- */}
           <TabPanel p={0}>
+            
+            {/* Filter Buttons */}
             <ButtonGroup size="sm" isAttached variant="outline" mb={4} flexWrap="wrap">
-              <Button onClick={() => setFilterStatus('all')} isActive={filterStatus === 'all'} _active={{ bg: 'teal.600', color: 'white' }}>Semua ({tasks.length})</Button>
-              <Button onClick={() => setFilterStatus('to_do')} isActive={filterStatus === 'to_do'} _active={{ bg: 'teal.600', color: 'white' }}>To Do</Button>
-              {user.role !== 'intern' && <Button onClick={() => setFilterStatus('done')} isActive={filterStatus === 'done'} _active={{ bg: 'teal.600', color: 'white' }}>Perlu Review</Button>}
-              <Button onClick={() => setFilterStatus('reviewed')} isActive={filterStatus === 'reviewed'} _active={{ bg: 'teal.600', color: 'white' }}>Selesai</Button>
+              <Button onClick={() => setFilterStatus('all')} isActive={filterStatus === 'all'} _active={{ bg: 'teal.600', color: 'white' }}>
+                Semua
+              </Button>
+              
+              {/* Tombol Filter 'Tugas Saya' */}
+              <Button onClick={() => setFilterStatus('my_tasks')} isActive={filterStatus === 'my_tasks'} _active={{ bg: 'teal.600', color: 'white' }}>
+                Tugas Anda
+              </Button>
+
+              <Button onClick={() => setFilterStatus('to_do')} isActive={filterStatus === 'to_do'} _active={{ bg: 'teal.600', color: 'white' }}>
+                To Do
+              </Button>
+              {user.role !== 'intern' && (
+                <Button onClick={() => setFilterStatus('done')} isActive={filterStatus === 'done'} _active={{ bg: 'teal.600', color: 'white' }}>
+                  Perlu Review
+                </Button>
+              )}
+              <Button onClick={() => setFilterStatus('reviewed')} isActive={filterStatus === 'reviewed'} _active={{ bg: 'teal.600', color: 'white' }}>
+                Selesai
+              </Button>
             </ButtonGroup>
             
             {isLoading && <Box textAlign="center" p={10}><Spinner /><Text mt={4}>Memuat...</Text></Box>}
@@ -133,15 +158,32 @@ function DashboardPage({ user, usersList, onLogout }) {
                     <ListItem key={task.id} p={4} borderWidth={1} borderRadius="md" _hover={{ shadow: 'md' }} bg="white" display="flex" alignItems="center">
                       <ListIcon as={task.status === 'Reviewed' ? CheckCircleIcon : (task.status === 'Done' ? EditIcon : TimeIcon)} color={task.status === 'Reviewed' ? 'green.500' : (task.status === 'Done' ? 'orange.500' : 'gray.400')} fontSize="2xl" mr={4} />
                       <Box flexGrow={1}>
-                        <Heading size="sm" mb={1}>{task.title}</Heading>
+                        <Heading size="sm" mb={1} display="flex" alignItems="center">
+                           {task.title}
+                           {/* Tombol Info Kecil untuk Detail */}
+                           <Tooltip label="Lihat Detail & Link" fontSize="md">
+                             <IconButton 
+                               icon={<InfoIcon />} 
+                               size="xs" 
+                               variant="ghost" 
+                               colorScheme="blue" 
+                               ml={2} 
+                               onClick={() => openDetailModal(task)} 
+                             />
+                           </Tooltip>
+                        </Heading>
                         <Text fontSize="xs" color="gray.500" mb={1}>
                           {user.role !== 'intern' && <span>Assigned to: <b>{getAssigneeName(task.assignee_id)}</b> • </span>}
-                          Priority: <Badge>{task.priority}</Badge> | Status: <Tag size="sm">{task.status}</Tag>
+                          Priority: <Badge colorScheme={task.priority === 'High' ? 'red' : 'gray'}>{task.priority}</Badge> 
+                          {' • '}
+                          Status: <Tag size="sm" colorScheme={task.status === 'Reviewed' ? 'green' : (task.status === 'Done' ? 'orange' : 'gray')}>{task.status}</Tag>
                         </Text>
                         {task.rating && <Tag size="sm" colorScheme="yellow" mt={2}><StarIcon mr={2} /> {task.rating}/5</Tag>}
                       </Box>
-                      {user.role === 'intern' && task.status === 'To Do' && <IconButton icon={<CheckIcon />} size='sm' colorScheme='green' onClick={() => openCompleteModal(task)} ml={2} />}
-                      {user.role !== 'intern' && task.status === 'Done' && <IconButton icon={<EditIcon />} size='sm' colorScheme='yellow' onClick={() => openReviewModal(task)} ml={2} />}
+                      
+                      {user.role === 'intern' && task.status === 'To Do' && <IconButton icon={<CheckIcon />} size='sm' colorScheme='green' onClick={() => openCompleteModal(task)} ml={2} aria-label="Selesaikan" />}
+                      {user.role !== 'intern' && task.status === 'Done' && <IconButton icon={<EditIcon />} size='sm' colorScheme='yellow' onClick={() => openReviewModal(task)} ml={2} aria-label="Review" />}
+                      
                     </ListItem>
                   ))
                 )}
@@ -149,27 +191,22 @@ function DashboardPage({ user, usersList, onLogout }) {
             )}
           </TabPanel>
           
-          {/* --- PANEL 2: Laporan Kinerja --- */}
           {user?.role !== 'intern' && (
             <TabPanel p={0}>
               <ReportGenerator users={usersList} /> 
             </TabPanel>
           )}
 
-          {/* --- PANEL 3: Kelola Tim (User Management) --- */}
           {user?.role !== 'intern' && (
             <TabPanel p={0}>
-              <UserManagement 
-                 users={usersList} 
-                 onRefresh={() => window.location.reload()} 
-              />
+              <UserManagement users={usersList} onRefresh={() => window.location.reload()} />
             </TabPanel>
           )}
 
         </TabPanels>
       </Tabs>
 
-      {/* Modals */}
+      {/* Render Modals */}
       {user?.role !== 'intern' && (
         <>
             <AddTaskForm isOpen={isAddTaskModalOpen} onClose={onCloseAddTaskModal} projectId={1} users={usersList ? usersList.filter(u => u.role === 'intern') : []} onTaskAdded={handleTaskAdded} />
@@ -177,6 +214,9 @@ function DashboardPage({ user, usersList, onLogout }) {
         </>
       )}
       <CompleteTaskModal isOpen={isCompleteModalOpen} onClose={onCloseCompleteModal} task={currentTask} onTaskCompleted={handleTaskCompleted} />
+      
+      {/* Modal Detail (Baru) */}
+      <TaskDetailModal isOpen={isDetailModalOpen} onClose={onCloseDetailModal} task={currentTask} />
     </Box>
   );
 }
