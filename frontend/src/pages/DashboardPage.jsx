@@ -1,5 +1,5 @@
 // src/pages/DashboardPage.jsx
-// VERSI FINAL (Support Tampilan Revisi & Likert)
+// VERSI FINAL: Struktur Tab Terpisah & Aman
 
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
@@ -10,12 +10,13 @@ import {
   Tabs, TabList, TabPanels, Tab, TabPanel, Tooltip
 } from '@chakra-ui/react';
 
-// Impor Ikon Penting (Termasuk WarningTwoIcon & RepeatIcon untuk Revisi)
+// Ikon
 import { 
   CheckCircleIcon, TimeIcon, CheckIcon, AddIcon, 
   StarIcon, EditIcon, InfoIcon, WarningTwoIcon, RepeatIcon 
 } from '@chakra-ui/icons'; 
 
+// Komponen
 import AddTaskForm from '../components/AddTaskForm';
 import ReviewTaskForm from '../components/ReviewTaskForm';
 import CompleteTaskModal from '../components/CompleteTaskModal';
@@ -29,14 +30,11 @@ function DashboardPage({ user, usersList, onLogout }) {
   const [tasks, setTasks] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
-  
-  // Filter default 'all'.
   const [filterStatus, setFilterStatus] = useState('all');
-  
   const [currentTask, setCurrentTask] = useState(null); 
   const toast = useToast();
   
-  // Hooks untuk Modal
+  // Hooks Modal
   const { isOpen: isAddTaskModalOpen, onOpen: onOpenAddTaskModal, onClose: onCloseAddTaskModal } = useDisclosure();
   const { isOpen: isReviewModalOpen, onOpen: onOpenReviewModal, onClose: onCloseReviewModal } = useDisclosure();
   const { isOpen: isCompleteModalOpen, onOpen: onOpenCompleteModal, onClose: onCloseCompleteModal } = useDisclosure();
@@ -64,7 +62,7 @@ function DashboardPage({ user, usersList, onLogout }) {
     if (user) fetchTasks(); 
   }, [user]);
 
-  // --- Update State Lokal ---
+  // --- Handlers State ---
   const updateLocalTask = (updatedTask) => {
     setTasks(prev => prev.map(t => t.id === updatedTask.id ? updatedTask : t));
   };
@@ -83,7 +81,7 @@ function DashboardPage({ user, usersList, onLogout }) {
       return assignee ? assignee.nama : 'Tidak Ditugaskan';
   };
 
-  // --- LOGIKA FILTER ---
+  // --- Filter Logic ---
   const filteredTasks = tasks.filter(task => {
     const status = task.status ? task.status.trim() : "";
     
@@ -91,7 +89,7 @@ function DashboardPage({ user, usersList, onLogout }) {
     if (filterStatus === 'all') return true;
     
     if (filterStatus === 'to_do') return status === 'To Do';
-    if (filterStatus === 'revision') return status === 'Need Revision'; // Filter Baru
+    if (filterStatus === 'revision') return status === 'Need Revision';
     if (filterStatus === 'done') return status === 'Done';
     if (filterStatus === 'reviewed') return status === 'Reviewed';
     
@@ -118,17 +116,24 @@ function DashboardPage({ user, usersList, onLogout }) {
         </Button>
       </Flex>
 
-      {/* TABS */}
+      {/* TABS UTAMA */}
       <Tabs isFitted variant='enclosed' colorScheme='teal' isLazy>
         <TabList mb='1em'>
+          {/* Tab 1: Selalu Ada */}
           <Tab _selected={{ color: 'white', bg: 'teal.500' }}>Daftar Tugas</Tab>
-          {user?.role !== 'intern' && <Tab _selected={{ color: 'white', bg: 'teal.500' }}>Laporan Kinerja</Tab>}
-          {user?.role !== 'intern' && <Tab _selected={{ color: 'white', bg: 'teal.500' }}>Kelola Tim</Tab>}
+          
+          {/* Tab 2 & 3: Hanya untuk Manajer (Bukan Intern) */}
+          {user?.role !== 'intern' && (
+            <>
+              <Tab _selected={{ color: 'white', bg: 'teal.500' }}>Laporan Kinerja</Tab>
+              <Tab _selected={{ color: 'white', bg: 'teal.500' }}>Kelola Tim</Tab>
+            </>
+          )}
         </TabList>
 
         <TabPanels>
           
-          {/* PANEL 1: DAFTAR TUGAS */}
+          {/* --- PANEL 1: DAFTAR TUGAS --- */}
           <TabPanel p={0}>
             <Flex overflowX="auto" pb={2} mb={4}>
                 <ButtonGroup size="sm" isAttached variant="outline">
@@ -138,22 +143,17 @@ function DashboardPage({ user, usersList, onLogout }) {
                 <Button onClick={() => setFilterStatus('my_tasks')} isActive={filterStatus === 'my_tasks'} _active={{ bg: 'teal.600', color: 'white' }}>
                     Tugas Saya
                 </Button>
-                
                 <Button onClick={() => setFilterStatus('to_do')} isActive={filterStatus === 'to_do'} _active={{ bg: 'teal.600', color: 'white' }}>
-                    To Do
+                    Aktif
                 </Button>
-                
-                {/* Tombol Filter Revisi (Merah) */}
                 <Button onClick={() => setFilterStatus('revision')} isActive={filterStatus === 'revision'} _active={{ bg: 'red.500', color: 'white' }} colorScheme="red">
                     Perlu Revisi
                 </Button>
-                
                 {user?.role !== 'intern' && (
                     <Button onClick={() => setFilterStatus('done')} isActive={filterStatus === 'done'} _active={{ bg: 'teal.600', color: 'white' }}>
                     Perlu Review (Done)
                     </Button>
                 )}
-                
                 <Button onClick={() => setFilterStatus('reviewed')} isActive={filterStatus === 'reviewed'} _active={{ bg: 'teal.600', color: 'white' }}>
                     Selesai
                 </Button>
@@ -172,8 +172,6 @@ function DashboardPage({ user, usersList, onLogout }) {
                 ) : (
                   filteredTasks.map((task) => (
                     <ListItem key={task.id} p={3} borderWidth={1} borderRadius="md" _hover={{ shadow: 'md' }} bg="white" display="flex" alignItems="center">
-                      
-                      {/* Ikon Status (Termasuk Ikon Peringatan Merah untuk Revisi) */}
                       <ListIcon 
                         as={
                           task.status === 'Reviewed' ? CheckCircleIcon : 
@@ -187,8 +185,6 @@ function DashboardPage({ user, usersList, onLogout }) {
                         }
                         fontSize="xl" mr={3}
                       />
-                      
-                      {/* Info Tugas */}
                       <Box flexGrow={1}>
                         <Flex alignItems="center">
                            <Heading size="xs" mr={2}>{task.title}</Heading>
@@ -196,52 +192,33 @@ function DashboardPage({ user, usersList, onLogout }) {
                              <IconButton icon={<InfoIcon />} size="xs" variant="ghost" colorScheme="blue" onClick={() => openDetailModal(task)} />
                            </Tooltip>
                         </Flex>
-                        
                         <Text fontSize="xs" color="gray.500">
                           {user.role !== 'intern' && <span>To: <b>{getAssigneeName(task.assignee_id)}</b> • </span>}
                           Prioritas: <Badge colorScheme={task.priority === 'High' ? 'red' : 'gray'} fontSize="0.6em">{task.priority}</Badge>
                           {' • '}
-                          {/* Tag Status berwarna Merah jika Revisi */}
                           Status: <Tag size="sm" variant="subtle" colorScheme={task.status === 'Need Revision' ? 'red' : 'gray'}>{task.status}</Tag>
                         </Text>
-
-                        {/* Rating (Hanya muncul jika Reviewed) */}
-                        {task.status === 'Reviewed' && task.rating && (
+                        {task.rating && (
                           <Tag size="sm" colorScheme="yellow" mt={1} variant="subtle">
                             <StarIcon mr={1} /> {task.rating}/5
                           </Tag>
                         )}
-                        
-                        {/* Feedback Revisi (Muncul Merah jika Need Revision) */}
                         {task.status === 'Need Revision' && task.feedback && (
-                            <Text fontSize="xs" color="red.500" mt={1} fontStyle="italic">
-                                ⚠️ Note: "{task.feedback}"
-                            </Text>
+                            <Text fontSize="xs" color="red.500" mt={1} fontStyle="italic">⚠️ Note: "{task.feedback}"</Text>
                         )}
                       </Box>
                       
-                      {/* --- TOMBOL AKSI --- */}
-
-                      {/* Intern: Submit (Hijau) ATAU Submit Ulang Revisi (Merah) */}
+                      {/* Tombol Aksi */}
                       {user.role === 'intern' && (task.status === 'To Do' || task.status === 'Need Revision') && (
                         <Tooltip label={task.status === 'Need Revision' ? "Submit Ulang Revisi" : "Selesaikan"}>
-                            <IconButton 
-                                icon={task.status === 'Need Revision' ? <RepeatIcon /> : <CheckIcon />} 
-                                size='sm' 
-                                colorScheme={task.status === 'Need Revision' ? 'red' : 'green'} 
-                                onClick={() => openCompleteModal(task)} 
-                                ml={2} 
-                            />
+                            <IconButton icon={task.status === 'Need Revision' ? <RepeatIcon /> : <CheckIcon />} size='sm' colorScheme={task.status === 'Need Revision' ? 'red' : 'green'} onClick={() => openCompleteModal(task)} ml={2} />
                         </Tooltip>
                       )}
-                      
-                      {/* Manajer: Review (Kuning) */}
                       {user.role !== 'intern' && (task.status === 'Done' || task.status === 'Need Revision') && (
                         <Tooltip label="Review Tugas">
                             <IconButton icon={<EditIcon />} size='sm' colorScheme='yellow' onClick={() => openReviewModal(task)} ml={2} />
                         </Tooltip>
                       )}
-
                     </ListItem>
                   ))
                 )}
@@ -249,13 +226,18 @@ function DashboardPage({ user, usersList, onLogout }) {
             )}
           </TabPanel>
           
-          {/* PANEL 2 & 3 (Hanya Non-Intern) */}
+          {/* PANEL 2 & 3: Hanya untuk Manajer */}
           {user?.role !== 'intern' && (
             <>
+                {/* PANEL 2: Laporan */}
                 <TabPanel p={0}>
+                  {/* Pastikan komponen ini BENAR-BENAR TERPISAH */}
                   <ReportGenerator users={usersList} /> 
                 </TabPanel>
+
+                {/* PANEL 3: Kelola Tim */}
                 <TabPanel p={0}>
+                  {/* Pastikan komponen ini BENAR-BENAR TERPISAH */}
                   <UserManagement users={usersList} onRefresh={() => window.location.reload()} />
                 </TabPanel>
             </>
@@ -263,7 +245,7 @@ function DashboardPage({ user, usersList, onLogout }) {
         </TabPanels>
       </Tabs>
 
-      {/* MODALS */}
+      {/* Modals */}
       {user?.role !== 'intern' && (
         <>
             <AddTaskForm isOpen={isAddTaskModalOpen} onClose={onCloseAddTaskModal} projectId={1} users={usersList ? usersList.filter(u => u.role === 'intern') : []} onTaskAdded={addTaskLocally} />

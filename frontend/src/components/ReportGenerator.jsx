@@ -1,6 +1,3 @@
-// src/components/ReportGenerator.jsx
-// Versi ROBUST & DEBUG - Toleransi tinggi terhadap format JSON LLM
-
 import React, { useState, useMemo } from 'react';
 import axios from 'axios';
 import {
@@ -19,7 +16,7 @@ ChartJS.register(CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend)
 const API_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000';
 
 function ReportGenerator({ users }) { 
-  if (!users) return <Text>Memuat data...</Text>;
+  if (!users) return <Text>Memuat data pengguna...</Text>;
 
   const [reportType, setReportType] = useState('individu');
   const [selectedUserId, setSelectedUserId] = useState('');
@@ -49,22 +46,27 @@ function ReportGenerator({ users }) {
     
     let endpoint = '';
     let requestBody = {};
+    let isFormValid = false;
 
     if (reportType === 'individu') {
-      if (!selectedUserId) {
-        toast({ title: "Pilih pengguna", status: "warning", duration: 3000, isClosable: true });
-        return;
+      if (selectedUserId) {
+        endpoint = `${API_URL}/generate-report`;
+        requestBody = { user_id: parseInt(selectedUserId), start_date: startDate, end_date: endDate };
+        isFormValid = true;
+      } else {
+        toast({ title: "Pengguna wajib dipilih", status: "warning", duration: 3000, isClosable: true });
       }
-      endpoint = `${API_URL}/generate-report`;
-      requestBody = { user_id: parseInt(selectedUserId), start_date: startDate, end_date: endDate };
     } else {
       if (!selectedDivisi) {
-        toast({ title: "Pilih divisi", status: "warning", duration: 3000, isClosable: true });
+        toast({ title: "Divisi wajib dipilih", status: "warning", duration: 3000, isClosable: true });
         return;
       }
       endpoint = `${API_URL}/generate-report/division`; 
       requestBody = { divisi: selectedDivisi, start_date: startDate, end_date: endDate };
+      isFormValid = true;
     }
+
+    if (!isFormValid) return;
 
     setIsLoading(true);
     setError(null);
@@ -72,7 +74,7 @@ function ReportGenerator({ users }) {
 
     try {
       const response = await axios.post(endpoint, requestBody);
-      console.log("🔍 RAW DATA DARI LLM:", response.data); // <-- CEK CONSOLE (F12) DISINI!
+      console.log("🔍 RAW DATA:", response.data); 
       setReportData(response.data); 
       toast({ title: "Laporan Siap", status: "success", duration: 3000, isClosable: true, position: "top" });
     } catch (err) {
@@ -83,21 +85,13 @@ function ReportGenerator({ users }) {
     }
   };
   
-  // --- Fungsi Chart Super Aman ---
   const getChartData = () => {
     if (!reportData) return null;
+    const chartObj = reportData.chart_data || reportData.chartData;
+    if (!chartObj) return null;
     
-    // Coba cari di berbagai kemungkinan nama key
-    const chartObj = reportData.chart_data || reportData.chartData || reportData.data_grafik;
-
-    if (!chartObj) {
-        console.warn("Objek chart tidak ditemukan di JSON");
-        return null;
-    }
-    
-    // Ambil nilai dengan aman (handle string atau number)
     const label = chartObj.label || "Kinerja";
-    const actual = parseInt(chartObj.actual || chartObj.aktual || 0);
+    const actual = parseInt(chartObj.actual || 0);
     const target = parseInt(chartObj.target || 0);
 
     return {
@@ -109,11 +103,9 @@ function ReportGenerator({ users }) {
     };
   };
   
-  // --- Fungsi Value Scores Aman ---
   const getValueScores = () => {
       if (!reportData) return [];
-      // Coba berbagai key
-      const scores = reportData.value_scores || reportData.valueScores || reportData.nilai_inti || [];
+      const scores = reportData.value_scores || [];
       return Array.isArray(scores) ? scores : [];
   };
 
@@ -136,7 +128,7 @@ function ReportGenerator({ users }) {
 
           {reportType === 'individu' && (
             <FormControl isRequired>
-              <FormLabel>Pilih Pengguna</FormLabel>
+              <FormLabel>Pilih Pengguna (Intern)</FormLabel>
               <Select placeholder='Pilih Anggota' value={selectedUserId} onChange={(e) => setSelectedUserId(e.target.value)}>
                 {users && users.filter(u => u.role === 'intern').map(user => (
                   <option key={user.id} value={user.id}>{user.nama} ({user.divisi})</option>
@@ -172,33 +164,30 @@ function ReportGenerator({ users }) {
       </Box>
 
       {isLoading && <Box textAlign="center" p={10}><Spinner size="xl" /><Text mt={4}>Analisis AI sedang berjalan...</Text></Box>}
-      
       {error && <Alert status='error'><AlertIcon />{error}</Alert>}
 
       {reportData && (
         <Box p={4} borderWidth={1} borderRadius="md" bg="gray.50">
-          <Heading size="md" mb={4}>Laporan Kinerja</Heading>
+          <Heading size="md" mb={4}>Hasil Laporan</Heading>
           
-          {/* Grafik */}
+          {/* GRAFIK */}
           {chartData ? (
             <Box mb={6} p={4} bg="white" borderRadius="md" shadow="sm">
               <Heading size="sm" mb={3}>Grafik Pencapaian</Heading>
               <Bar data={chartData} options={{ responsive: true }} />
             </Box>
-          ) : (
-            <Alert status="warning" mb={4}><AlertIcon />Data grafik tidak terdeteksi. Cek Console.</Alert>
-          )}
+          ) : ( <Alert status="warning" mb={4}><AlertIcon />Grafik tidak tersedia.</Alert> )}
           
-          {/* Narasi */}
+          {/* NARASI */}
           <Box p={4} bg="white" borderRadius="md" shadow="sm" mb={6}>
             <Heading size="sm" mb={3}>Analisis Naratif</Heading>
             <Text whiteSpace="pre-wrap"> 
-              {reportData.narrative_report || reportData.laporan_naratif || "Tidak ada narasi."}
+              {reportData.narrative_report || "Tidak ada narasi."}
             </Text>
           </Box>
           
-          {/* 5 Core Values */}
-          {valueScores.length > 0 ? (
+          {/* CORE VALUES */}
+          {valueScores.length > 0 && (
             <Box p={4} bg="white" borderRadius="md" shadow="sm">
               <Heading size="sm" mb={4}>Analisis 5 Core Values</Heading>
               <VStack spacing={4} align="stretch">
@@ -206,20 +195,18 @@ function ReportGenerator({ users }) {
                   <Stat key={index} p={3} borderWidth={1} borderRadius="md" bg="gray.50">
                     <Flex>
                       <Box>
-                        <StatLabel color="gray.600">{value.value_name || value.name || "Value"}</StatLabel>
-                        <StatNumber fontSize="2xl">{value.score || 0} / 5</StatNumber>
+                        <StatLabel color="gray.600">{value.value_name}</StatLabel>
+                        <StatNumber fontSize="2xl">{value.score} / 5</StatNumber>
                       </Box>
                       <Spacer />
                       <Text fontSize="sm" color="gray.700" maxWidth="70%" fontStyle="italic">
-                        "{value.justification || value.reason || "-"}"
+                        "{value.justification}"
                       </Text>
                     </Flex>
                   </Stat>
                 ))}
               </VStack>
             </Box>
-          ) : (
-            <Alert status="info"><AlertIcon />Detail Core Values tidak tersedia di respons ini.</Alert>
           )}
         </Box>
       )}
