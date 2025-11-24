@@ -1,6 +1,5 @@
 // src/components/ReportGenerator.jsx
-// Versi ini sudah mendukung Laporan Individu & Divisi
-// DAN sudah menggunakan VITE_API_URL
+// Versi SAFETY FIRST - Mencegah layar putih jika data LLM tidak sempurna
 
 import React, { useState, useMemo } from 'react';
 import axios from 'axios';
@@ -15,21 +14,18 @@ import {
   Chart as ChartJS, CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend
 } from 'chart.js';
 
-// Registrasi komponen Chart.js
 ChartJS.register(CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend);
 
-// Ambil URL API dari environment variable yang kita buat di .env
-const API_URL = import.meta.env.VITE_API_URL;
+const API_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000';
 
 function ReportGenerator({ users }) { 
   
-  // Guard clause jika prop 'users' belum siap
+  // Guard clause aman
   if (!users) {
     return <Text>Memuat data pengguna...</Text>;
   }
 
-  // --- State Management ---
-  const [reportType, setReportType] = useState('individu'); // 'individu' or 'divisi'
+  const [reportType, setReportType] = useState('individu');
   const [selectedUserId, setSelectedUserId] = useState('');
   const [selectedDivisi, setSelectedDivisi] = useState(''); 
   const [startDate, setStartDate] = useState('');
@@ -40,16 +36,14 @@ function ReportGenerator({ users }) {
   const [reportData, setReportData] = useState(null);
   const toast = useToast();
 
-  // Memo-isasi daftar divisi
   const divisions = useMemo(() => {
     if (!users || users.length === 0) return [];
     const allDivisions = users
-      .filter(u => u.role === 'intern')
+      .filter(u => u.role === 'intern' && u.divisi)
       .map(u => u.divisi);
     return [...new Set(allDivisions)].sort();
   }, [users]);
 
-  // --- Handle Submit (Sudah menggunakan VITE_API_URL) ---
   const handleSubmit = async (event) => {
     event.preventDefault();
     
@@ -64,7 +58,6 @@ function ReportGenerator({ users }) {
 
     if (reportType === 'individu') {
       if (selectedUserId) {
-        // Gunakan variabel API_URL
         endpoint = `${API_URL}/generate-report`;
         requestBody = {
           user_id: parseInt(selectedUserId),
@@ -77,7 +70,6 @@ function ReportGenerator({ users }) {
       }
     } else if (reportType === 'divisi') {
       if (selectedDivisi) {
-        // Gunakan variabel API_URL
         endpoint = `${API_URL}/generate-report/division`; 
         requestBody = {
           divisi: selectedDivisi,
@@ -97,8 +89,8 @@ function ReportGenerator({ users }) {
     setReportData(null);
 
     try {
-      // Panggil endpoint backend (token sudah ada di default header)
-      const response = await axios.post(endpoint, requestBody); 
+      const response = await axios.post(endpoint, requestBody);
+      console.log("Data Laporan Diterima:", response.data); // Debugging
       setReportData(response.data); 
       toast({
         title: "Laporan Berhasil Dibuat",
@@ -109,13 +101,13 @@ function ReportGenerator({ users }) {
       });
     } catch (err) {
       console.error("Error generating report:", err);
-      const errorMessage = err.response?.data?.detail || "Gagal menghasilkan laporan. Cek log server.";
+      const errorMessage = err.response?.data?.detail || "Gagal menghasilkan laporan. Cek koneksi atau data.";
       setError(errorMessage);
       toast({
-        title: "Gagal Membuat Laporan.",
+        title: "Gagal Membuat Laporan",
         description: errorMessage,
         status: "error",
-        duration: 9000,
+        duration: 5000,
         isClosable: true,
         position: "top",
       });
@@ -124,12 +116,18 @@ function ReportGenerator({ users }) {
     }
   };
   
-  // --- Fungsi getChartData (Tidak Berubah) ---
+  // --- Fungsi Chart Aman ---
   const getChartData = () => {
+    // Cek apakah data chart ada dan valid
     if (!reportData || !reportData.chart_data) return null;
+    
     const { label, actual, target } = reportData.chart_data;
+    
+    // Cek jika nilai actual/target undefined
+    if (actual === undefined || target === undefined) return null;
+
     return {
-      labels: [label],
+      labels: [label || "Kinerja"],
       datasets: [
         { label: 'Aktual Selesai', data: [actual], backgroundColor: 'rgba(54, 162, 235, 0.6)' },
         { label: 'Target KPI', data: [target], backgroundColor: 'rgba(255, 99, 132, 0.6)' },
@@ -138,14 +136,12 @@ function ReportGenerator({ users }) {
   };
   const chartData = getChartData();
 
-  // --- Render Utama ---
   return (
     <Box>
-      {/* --- 1. Form Input --- */}
+      {/* Form Input */}
       <Box as="form" onSubmit={handleSubmit} p={4} borderWidth={1} borderRadius="md" mb={6}>
         <VStack spacing={4}>
-          
-          <FormControl isRequired>
+          <FormControl>
             <FormLabel>Tipe Laporan</FormLabel>
             <RadioGroup onChange={setReportType} value={reportType}>
               <Stack direction='row' spacing={5}>
@@ -155,15 +151,10 @@ function ReportGenerator({ users }) {
             </RadioGroup>
           </FormControl>
 
-          {/* Tampilkan jika tipe 'individu' */}
           {reportType === 'individu' && (
             <FormControl isRequired>
               <FormLabel>Pilih Pengguna (Intern)</FormLabel>
-              <Select 
-                placeholder='Pilih Anggota Tim Intern' 
-                value={selectedUserId}
-                onChange={(e) => setSelectedUserId(e.target.value)}
-              >
+              <Select placeholder='Pilih Anggota Tim Intern' value={selectedUserId} onChange={(e) => setSelectedUserId(e.target.value)}>
                 {users && users.filter(u => u.role === 'intern').map(user => (
                   <option key={user.id} value={user.id}>{user.nama} ({user.divisi})</option>
                 ))}
@@ -171,15 +162,10 @@ function ReportGenerator({ users }) {
             </FormControl>
           )}
 
-          {/* Tampilkan jika tipe 'divisi' */}
           {reportType === 'divisi' && (
             <FormControl isRequired>
               <FormLabel>Pilih Divisi</FormLabel>
-              <Select 
-                placeholder='Pilih Divisi' 
-                value={selectedDivisi}
-                onChange={(e) => setSelectedDivisi(e.target.value)}
-              >
+              <Select placeholder='Pilih Divisi' value={selectedDivisi} onChange={(e) => setSelectedDivisi(e.target.value)}>
                 {divisions.map(divisi => (
                   <option key={divisi} value={divisi}>{divisi}</option>
                 ))}
@@ -187,82 +173,73 @@ function ReportGenerator({ users }) {
             </FormControl>
           )}
           
-          {/* Pilihan Tanggal */}
           <SimpleGrid columns={2} spacing={4} width="100%">
             <FormControl isRequired>
               <FormLabel>Tanggal Mulai</FormLabel>
-              <Input 
-                type="date"
-                value={startDate}
-                onChange={(e) => setStartDate(e.target.value)}
-              />
+              <Input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
             </FormControl>
             <FormControl isRequired>
               <FormLabel>Tanggal Selesai</FormLabel>
-              <Input 
-                type="date" 
-                value={endDate}
-                onChange={(e) => setEndDate(e.target.value)}
-              />
+              <Input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
             </FormControl>
           </SimpleGrid>
           
-          <Button 
-            type="submit" 
-            colorScheme="teal" 
-            isLoading={isLoading} 
-            width="100%"
-          >
+          <Button type="submit" colorScheme="teal" isLoading={isLoading} width="100%">
             Generate Laporan
           </Button>
         </VStack>
       </Box>
 
-      {/* --- 2. Area Hasil (Tidak Berubah) --- */}
+      {/* Area Hasil */}
       {isLoading && (
         <Box textAlign="center" p={10}>
           <Spinner size="xl" />
-          <Text mt={4}>Menghubungi LLM... Ini mungkin butuh beberapa detik...</Text>
+          <Text mt={4}>Menghubungi LLM... Mohon tunggu...</Text>
         </Box>
       )}
       
       {error && (
-        <Alert status='error' borderRadius="md">
-          <AlertIcon />
-          {error}
-        </Alert>
+        <Alert status='error' borderRadius="md"><AlertIcon />{error}</Alert>
       )}
 
+      {/* Render Hasil HANYA jika reportData ada */}
       {reportData && (
         <Box p={4} borderWidth={1} borderRadius="md" bg="gray.50">
           <Heading size="md" mb={4}>Hasil Laporan Kinerja</Heading>
           
-          <Box mb={6} p={4} bg="white" borderRadius="md" shadow="sm">
-            <Heading size="sm" mb={3}>Grafik KPI Objektif</Heading>
-            {chartData && <Bar data={chartData} options={{ responsive: true }} />}
-          </Box>
+          {/* Grafik - Render hanya jika data valid */}
+          {chartData ? (
+            <Box mb={6} p={4} bg="white" borderRadius="md" shadow="sm">
+              <Heading size="sm" mb={3}>Grafik KPI Objektif</Heading>
+              <Bar data={chartData} options={{ responsive: true }} />
+            </Box>
+          ) : (
+            <Alert status="warning" mb={4}><AlertIcon />Data grafik tidak lengkap dari LLM.</Alert>
+          )}
           
+          {/* Narasi */}
           <Box p={4} bg="white" borderRadius="md" shadow="sm">
-            <Heading size="sm" mb={3}>Analisis Naratif (Dihasilkan oleh LLM)</Heading>
+            <Heading size="sm" mb={3}>Analisis Naratif (LLM)</Heading>
             <Text whiteSpace="pre-wrap"> 
-              {reportData.narrative_report}
+              {reportData.narrative_report || "Tidak ada narasi yang dihasilkan."}
             </Text>
           </Box>
           
-          {reportData.value_scores && (
+          {/* Core Values - Pastikan Array sebelum di-map */}
+          {Array.isArray(reportData.value_scores) && reportData.value_scores.length > 0 && (
             <Box mt={6} p={4} bg="white" borderRadius="md" shadow="sm">
               <Heading size="sm" mb={4}>Analisis 5 Core Values</Heading>
               <VStack spacing={4} align="stretch">
-                {reportData.value_scores.map((value) => (
-                  <Stat key={value.value_name} p={3} borderWidth={1} borderRadius="md" bg="gray.50">
+                {reportData.value_scores.map((value, index) => (
+                  <Stat key={index} p={3} borderWidth={1} borderRadius="md" bg="gray.50">
                     <Flex>
                       <Box>
-                        <StatLabel color="gray.600">{value.value_name}</StatLabel>
+                        <StatLabel color="gray.600">{value.value_name || "Value"}</StatLabel>
                         <StatNumber fontSize="2xl">{value.score} / 5</StatNumber>
                       </Box>
                       <Spacer />
                       <Text fontSize="sm" color="gray.700" maxWidth="70%" fontStyle="italic">
-                        "{value.justification}"
+                        "{value.justification || "-"}"
                       </Text>
                     </Flex>
                   </Stat>
