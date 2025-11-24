@@ -1,8 +1,5 @@
 // src/pages/DashboardPage.jsx
-// VERSI FINAL FIX: 
-// 1. Syntax Error diperbaiki (Safe)
-// 2. Filter 'Perlu Revisi' dipisah agar terlihat
-// 3. Filter 'Perlu Review' (Manager) diperjelas
+// VERSI FINAL (Support Tampilan Revisi & Likert)
 
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
@@ -13,13 +10,12 @@ import {
   Tabs, TabList, TabPanels, Tab, TabPanel, Tooltip
 } from '@chakra-ui/react';
 
-// Impor semua ikon
+// Impor Ikon Penting (Termasuk WarningTwoIcon & RepeatIcon untuk Revisi)
 import { 
   CheckCircleIcon, TimeIcon, CheckIcon, AddIcon, 
   StarIcon, EditIcon, InfoIcon, WarningTwoIcon, RepeatIcon 
 } from '@chakra-ui/icons'; 
 
-// Impor komponen custom
 import AddTaskForm from '../components/AddTaskForm';
 import ReviewTaskForm from '../components/ReviewTaskForm';
 import CompleteTaskModal from '../components/CompleteTaskModal';
@@ -34,17 +30,17 @@ function DashboardPage({ user, usersList, onLogout }) {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
   
-  // Filter default 'all'. Opsi: 'all', 'my_tasks', 'to_do', 'revision', 'done', 'reviewed'
+  // Filter default 'all'.
   const [filterStatus, setFilterStatus] = useState('all');
   
   const [currentTask, setCurrentTask] = useState(null); 
   const toast = useToast();
   
   // Hooks untuk Modal
-  const addTaskDisclosure = useDisclosure();
-  const reviewDisclosure = useDisclosure();
-  const completeDisclosure = useDisclosure();
-  const detailDisclosure = useDisclosure();
+  const { isOpen: isAddTaskModalOpen, onOpen: onOpenAddTaskModal, onClose: onCloseAddTaskModal } = useDisclosure();
+  const { isOpen: isReviewModalOpen, onOpen: onOpenReviewModal, onClose: onCloseReviewModal } = useDisclosure();
+  const { isOpen: isCompleteModalOpen, onOpen: onOpenCompleteModal, onClose: onCloseCompleteModal } = useDisclosure();
+  const { isOpen: isDetailModalOpen, onOpen: onOpenDetailModal, onClose: onCloseDetailModal } = useDisclosure();
   
   const fetchTasks = async () => {
     setIsLoading(true);
@@ -77,9 +73,9 @@ function DashboardPage({ user, usersList, onLogout }) {
   };
 
   // --- Modal Handlers ---
-  const openReviewModal = (task) => { setCurrentTask(task); reviewDisclosure.onOpen(); };
-  const openCompleteModal = (task) => { setCurrentTask(task); completeDisclosure.onOpen(); };
-  const openDetailModal = (task) => { setCurrentTask(task); detailDisclosure.onOpen(); };
+  const openReviewModal = (task) => { setCurrentTask(task); onOpenReviewModal(); };
+  const openCompleteModal = (task) => { setCurrentTask(task); onOpenCompleteModal(); };
+  const openDetailModal = (task) => { setCurrentTask(task); onOpenDetailModal(); };
   
   const getAssigneeName = (assigneeId) => {
       if (!usersList) return '...'; 
@@ -94,9 +90,8 @@ function DashboardPage({ user, usersList, onLogout }) {
     if (filterStatus === 'my_tasks') return task.assignee_id === user.id;
     if (filterStatus === 'all') return true;
     
-    // Filter Status Spesifik
     if (filterStatus === 'to_do') return status === 'To Do';
-    if (filterStatus === 'revision') return status === 'Need Revision';
+    if (filterStatus === 'revision') return status === 'Need Revision'; // Filter Baru
     if (filterStatus === 'done') return status === 'Done';
     if (filterStatus === 'reviewed') return status === 'Reviewed';
     
@@ -114,7 +109,7 @@ function DashboardPage({ user, usersList, onLogout }) {
         </Box>
         <Spacer />
         {user?.role !== 'intern' && (
-          <Button leftIcon={<AddIcon />} colorScheme='teal' size="sm" onClick={addTaskDisclosure.onOpen}>
+          <Button leftIcon={<AddIcon />} colorScheme='teal' size="sm" onClick={onOpenAddTaskModal}>
             Tambah Tugas
           </Button>
         )}
@@ -143,14 +138,16 @@ function DashboardPage({ user, usersList, onLogout }) {
                 <Button onClick={() => setFilterStatus('my_tasks')} isActive={filterStatus === 'my_tasks'} _active={{ bg: 'teal.600', color: 'white' }}>
                     Tugas Saya
                 </Button>
+                
                 <Button onClick={() => setFilterStatus('to_do')} isActive={filterStatus === 'to_do'} _active={{ bg: 'teal.600', color: 'white' }}>
                     To Do
                 </Button>
+                
+                {/* Tombol Filter Revisi (Merah) */}
                 <Button onClick={() => setFilterStatus('revision')} isActive={filterStatus === 'revision'} _active={{ bg: 'red.500', color: 'white' }} colorScheme="red">
                     Perlu Revisi
                 </Button>
                 
-                {/* Filter Khusus Manajer */}
                 {user?.role !== 'intern' && (
                     <Button onClick={() => setFilterStatus('done')} isActive={filterStatus === 'done'} _active={{ bg: 'teal.600', color: 'white' }}>
                     Perlu Review (Done)
@@ -163,7 +160,7 @@ function DashboardPage({ user, usersList, onLogout }) {
                 </ButtonGroup>
             </Flex>
             
-            {isLoading && <Box textAlign="center" p={10}><Spinner /><Text mt={4}>Memuat...</Text></Box>}
+            {isLoading && <Box textAlign="center" p={10}><Spinner thickness='4px' speed='0.65s' emptyColor='gray.200' color='teal.500' size='xl' /><Text mt={4}>Memuat...</Text></Box>}
             {error && <Alert status='error'><AlertIcon />{error}</Alert>}
             
             {!isLoading && !error && (
@@ -176,7 +173,7 @@ function DashboardPage({ user, usersList, onLogout }) {
                   filteredTasks.map((task) => (
                     <ListItem key={task.id} p={3} borderWidth={1} borderRadius="md" _hover={{ shadow: 'md' }} bg="white" display="flex" alignItems="center">
                       
-                      {/* Ikon Status */}
+                      {/* Ikon Status (Termasuk Ikon Peringatan Merah untuk Revisi) */}
                       <ListIcon 
                         as={
                           task.status === 'Reviewed' ? CheckCircleIcon : 
@@ -204,20 +201,30 @@ function DashboardPage({ user, usersList, onLogout }) {
                           {user.role !== 'intern' && <span>To: <b>{getAssigneeName(task.assignee_id)}</b> • </span>}
                           Prioritas: <Badge colorScheme={task.priority === 'High' ? 'red' : 'gray'} fontSize="0.6em">{task.priority}</Badge>
                           {' • '}
-                          Status: <Tag size="sm" colorScheme={task.status === 'Need Revision' ? 'red' : 'gray'}>{task.status}</Tag>
+                          {/* Tag Status berwarna Merah jika Revisi */}
+                          Status: <Tag size="sm" variant="subtle" colorScheme={task.status === 'Need Revision' ? 'red' : 'gray'}>{task.status}</Tag>
                         </Text>
 
-                        {/* Rating */}
-                        {task.rating && (
+                        {/* Rating (Hanya muncul jika Reviewed) */}
+                        {task.status === 'Reviewed' && task.rating && (
                           <Tag size="sm" colorScheme="yellow" mt={1} variant="subtle">
                             <StarIcon mr={1} /> {task.rating}/5
                           </Tag>
                         )}
+                        
+                        {/* Feedback Revisi (Muncul Merah jika Need Revision) */}
+                        {task.status === 'Need Revision' && task.feedback && (
+                            <Text fontSize="xs" color="red.500" mt={1} fontStyle="italic">
+                                ⚠️ Note: "{task.feedback}"
+                            </Text>
+                        )}
                       </Box>
                       
-                      {/* Aksi: Submit/Revisi (Intern) */}
+                      {/* --- TOMBOL AKSI --- */}
+
+                      {/* Intern: Submit (Hijau) ATAU Submit Ulang Revisi (Merah) */}
                       {user.role === 'intern' && (task.status === 'To Do' || task.status === 'Need Revision') && (
-                        <Tooltip label={task.status === 'Need Revision' ? "Submit Revisi" : "Selesaikan"}>
+                        <Tooltip label={task.status === 'Need Revision' ? "Submit Ulang Revisi" : "Selesaikan"}>
                             <IconButton 
                                 icon={task.status === 'Need Revision' ? <RepeatIcon /> : <CheckIcon />} 
                                 size='sm' 
@@ -228,7 +235,7 @@ function DashboardPage({ user, usersList, onLogout }) {
                         </Tooltip>
                       )}
                       
-                      {/* Aksi: Review (Manajer) */}
+                      {/* Manajer: Review (Kuning) */}
                       {user.role !== 'intern' && (task.status === 'Done' || task.status === 'Need Revision') && (
                         <Tooltip label="Review Tugas">
                             <IconButton icon={<EditIcon />} size='sm' colorScheme='yellow' onClick={() => openReviewModal(task)} ml={2} />
@@ -259,12 +266,12 @@ function DashboardPage({ user, usersList, onLogout }) {
       {/* MODALS */}
       {user?.role !== 'intern' && (
         <>
-            <AddTaskForm isOpen={addTaskDisclosure.isOpen} onClose={addTaskDisclosure.onClose} projectId={1} users={usersList ? usersList.filter(u => u.role === 'intern') : []} onTaskAdded={addTaskLocally} />
-            <ReviewTaskForm isOpen={reviewDisclosure.isOpen} onClose={reviewDisclosure.onClose} task={currentTask} onTaskReviewed={updateLocalTask} />
+            <AddTaskForm isOpen={isAddTaskModalOpen} onClose={onCloseAddTaskModal} projectId={1} users={usersList ? usersList.filter(u => u.role === 'intern') : []} onTaskAdded={addTaskLocally} />
+            <ReviewTaskForm isOpen={isReviewModalOpen} onClose={onCloseReviewModal} task={currentTask} onTaskReviewed={updateLocalTask} />
         </>
       )}
-      <CompleteTaskModal isOpen={completeDisclosure.isOpen} onClose={completeDisclosure.onClose} task={currentTask} onTaskCompleted={updateLocalTask} />
-      <TaskDetailModal isOpen={detailDisclosure.isOpen} onClose={detailDisclosure.onClose} task={currentTask} />
+      <CompleteTaskModal isOpen={isCompleteModalOpen} onClose={onCloseCompleteModal} task={currentTask} onTaskCompleted={updateLocalTask} />
+      <TaskDetailModal isOpen={isDetailModalOpen} onClose={onCloseDetailModal} task={currentTask} />
       
     </Box>
   );

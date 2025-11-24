@@ -1,5 +1,5 @@
-# main.py - FINAL FIX: CORS SAPU JAGAT
-# Memaksa backend menerima request dari domain manapun (*)
+# main.py - FULL CODE FINAL (Versi Gemini 2.5 Flash - KOREKSI)
+# Sudah termasuk perbaikan bug tanggal (TypeError) dan model 2.5.
 
 # --- 1. IMPOR LIBRARY ---
 from fastapi import FastAPI, Depends, HTTPException, status
@@ -15,14 +15,19 @@ import re
 # --- 2. IMPOR LOKAL ---
 from config import settings
 from database import create_db_and_tables, get_session, engine
-from models import (User, Project, Task)
+from models import (
+    User, Project, Task 
+)
 from auth import (
-    get_password_hash, verify_password, create_access_token, 
-    get_current_user, get_current_active_manager, Token
+    get_password_hash, 
+    verify_password, 
+    create_access_token, 
+    get_current_user,
+    get_current_active_manager,
+    Token
 )
 
 # --- 3. SKEMA PYDANTIC ---
-# (Semua skema sama seperti sebelumnya)
 
 class UserRead(SQLModel):
     id: int
@@ -93,19 +98,19 @@ class DivisionReportRequest(SQLModel):
     start_date: str 
     end_date: str   
 
-# --- 4. INISIALISASI APP & CORS (BAGIAN PENTING!) ---
+# --- 4. INISIALISASI APP & CORS ---
 
 app = FastAPI(title="API Sistem Pelaporan Kinerja PIH")
 
-# --- CORS FIX: ALLOW ALL (SAPU JAGAT) ---
+origins = ["*"]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # <--- WAJIB ["*"] AGAR SEMUA DOMAIN BISA MASUK
+    allow_origins=origins,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["*"], 
+    allow_headers=["*"], 
 )
-# ----------------------------------------
 
 try:
     genai.configure(api_key=settings.GEMINI_API_KEY)
@@ -209,6 +214,7 @@ def complete_task(*, session: Session = Depends(get_session), task_id: int, link
     if not db_task: raise HTTPException(404, "Task not found")
     if db_task.assignee_id != current_user.id: raise HTTPException(403, "Bukan tugas Anda")
     if db_task.status in ["Done", "Reviewed"]: raise HTTPException(400, "Sudah selesai")
+    
     db_task.status = "Done"
     db_task.completed_at = datetime.utcnow()
     db_task.submission_link = link.submission_link
