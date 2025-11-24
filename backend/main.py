@@ -1,7 +1,6 @@
-# main.py - FULL CODE FINAL (Versi Gemini 2.5 Flash)
-# Sudah termasuk perbaikan bug tanggal (TypeError) dan model terbaru.
+# main.py - FINAL FIX: STRICT JSON PROMPT
+# Memaksa LLM mengikuti struktur data yang tepat untuk Grafik & Values
 
-# --- 1. IMPOR LIBRARY ---
 from fastapi import FastAPI, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
 from fastapi.middleware.cors import CORSMiddleware
@@ -10,24 +9,17 @@ from typing import Optional, List
 from datetime import datetime, timedelta, date
 import google.generativeai as genai
 import json
+import re # Tambahan regex untuk pembersihan JSON
 
-# --- 2. IMPOR LOKAL ---
 from config import settings
 from database import create_db_and_tables, get_session, engine
-from models import (
-    User, Project, Task 
-)
+from models import (User, Project, Task)
 from auth import (
-    get_password_hash, 
-    verify_password, 
-    create_access_token, 
-    get_current_user,
-    get_current_active_manager,
-    Token
+    get_password_hash, verify_password, create_access_token, 
+    get_current_user, get_current_active_manager, Token
 )
 
-# --- 3. SKEMA PYDANTIC ---
-
+# --- SKEMA PYDANTIC ---
 class UserRead(SQLModel):
     id: int
     nama: str
@@ -96,11 +88,9 @@ class DivisionReportRequest(SQLModel):
     start_date: str 
     end_date: str   
 
-# --- 4. INISIALISASI APP & CORS ---
-
+# --- APP & CORS ---
 app = FastAPI(title="API Sistem Pelaporan Kinerja PIH")
 
-# Konfigurasi CORS Sapu Jagat (Allow All)
 origins = ["*"]
 
 app.add_middleware(
@@ -117,12 +107,11 @@ try:
 except Exception as e:
     print(f"ERROR:   Konfigurasi Gemini API GAGAL: {e}")
 
-# --- 5. EVENT STARTUP ---
 @app.on_event("startup")
 def on_startup():
     create_db_and_tables()
 
-# --- 6. ENDPOINT AUTH & USER ---
+# --- AUTH ENDPOINTS ---
 @app.post("/token", response_model=Token)
 async def login_for_access_token(session: Session = Depends(get_session), form_data: OAuth2PasswordRequestForm = Depends()):
     statement = select(User).where(User.email == form_data.username)
@@ -139,7 +128,6 @@ def create_user(*, session: Session = Depends(get_session), user_data: UserCreat
     statement_check = select(User).where(User.email == user_data.email)
     if session.exec(statement_check).first():
         raise HTTPException(status_code=400, detail="Email sudah terdaftar")
-        
     hashed_password = get_password_hash(user_data.password)
     user_dict = user_data.model_dump()
     user_dict["hashed_password"] = hashed_password
@@ -181,7 +169,7 @@ def delete_user(*, session: Session = Depends(get_session), user_id: int, curren
     session.commit()
     return {"ok": True}
 
-# --- 7. ENDPOINT PROJECT & TASK ---
+# --- TASK ENDPOINTS ---
 @app.post("/projects", response_model=ProjectRead)
 def create_project(*, session: Session = Depends(get_session), project_data: ProjectCreate, current_manager: User = Depends(get_current_active_manager)):
     db_project = Project.model_validate(project_data)
@@ -235,38 +223,72 @@ def review_task(*, session: Session = Depends(get_session), task_id: int, review
     session.refresh(db_task)
     return db_task
 
-# --- 8. ENDPOINT LAPORAN LLM ---
+# --- LLM REPORTING ---
+
 KPI_TARGETS = {
     "GD": 6, "JO": 2, "SMO": 6, "PH": 1, "EPM": 3, "CC": 3, "VO": 0,
     "FA": 0, "PR": 2, "Staf": 0, "Pimpinan": 0, "PM": 0, "Default": 5
 }
 CORE_VALUES = ["Creative", "Integrity", "Resilient", "Collaborative", "Innovative"]
 
+def clean_json_string(json_str: str) -> str:
+    """Membersihkan output LLM dari markdown code block."""
+    json_str = json_str.strip()
+    if json_str.startswith("```json"):
+        json_str = json_str[7:]
+    if json_str.startswith("```"):
+        json_str = json_str[3:]
+    if json_str.endswith("```"):
+        json_str = json_str[:-3]
+    return json_str.strip()
+
+# --- PROMPT INDIVIDU ---
 def create_kpi_prompt(user_name: str, divisi: str, kpi_data: dict) -> str:
     return f"""
-    Anda adalah Manajer HR. Evaluasi {user_name} (Divisi {divisi}). Values: {CORE_VALUES}.
-    Data: {kpi_data}
-    Jawab JSON: narrative_report, chart_data, value_scores.
+    Anda adalah Manajer HR. Evaluasi kinerja: {user_name} (Divisi: {divisi}).
+    
+    DATA KINERJA (Wajib Digunakan):
+    - Target: {kpi_data['kpi_target']}
+    - Aktual Selesai: {kpi_data['total_tasks']}
+    - Deadline Tepat: {kpi_data['on_time_percentage']}%
+    - Rating: {kpi_data['avg_rating']}
+    - Feedbacks: {kpi_data['feedbacks']}
+    
+    PENTING: Output WAJIB berupa JSON MURNI tanpa markdown.
+    Struktur JSON harus PERSIS seperti ini:
+    {{
+        "narrative_report": "Paragraf narasi evaluasi kinerja...",
+        "chart_data": {{
+            "label": "Total Tugas Selesai",
+            "actual": {kpi_data['total_tasks']}, 
+            "target": {kpi_data['kpi_target']}
+        }},
+        "value_scores": [
+            {{ "value_name": "Creative", "score": 0, "justification": "..." }},
+            {{ "value_name": "Integrity", "score": 0, "justification": "..." }},
+            {{ "value_name": "Resilient", "score": 0, "justification": "..." }},
+            {{ "value_name": "Collaborative", "score": 0, "justification": "..." }},
+            {{ "value_name": "Innovative", "score": 0, "justification": "..." }}
+        ]
+    }}
+    Isi skor (1-5) dan justifikasi berdasarkan data.
     """
 
 @app.post("/generate-report")
 async def generate_report(request: ReportRequest, session: Session = Depends(get_session), current_manager: User = Depends(get_current_active_manager)):
     user = session.get(User, request.user_id)
     if not user: raise HTTPException(404, "User not found")
-
     try:
         start = date.fromisoformat(request.start_date)
         end = date.fromisoformat(request.end_date)
     except: raise HTTPException(400, "Format tanggal salah")
 
     tasks = session.exec(select(Task).where(
-        Task.assignee_id == request.user_id,
-        Task.status == "Reviewed",
-        Task.completed_at >= start,
-        Task.completed_at <= end
+        Task.assignee_id == request.user_id, Task.status == "Reviewed",
+        Task.completed_at >= start, Task.completed_at <= end
     )).all()
 
-    if not tasks: raise HTTPException(404, "Tidak ada data tugas 'Reviewed'")
+    if not tasks: raise HTTPException(404, "Tidak ada tugas Reviewed")
 
     total = len(tasks)
     on_time = 0
@@ -275,21 +297,14 @@ async def generate_report(request: ReportRequest, session: Session = Depends(get
     feedbacks = []
 
     for t in tasks:
-        # --- LOGIKA TANGGAL ROBUST (Anti-Error) ---
         comp_date = t.completed_at.date() if isinstance(t.completed_at, datetime) else t.completed_at
-        
         if t.completed_at and t.created_at:
-            # Pastikan keduanya datetime untuk pengurangan
             c_at = t.created_at if isinstance(t.created_at, datetime) else datetime.combine(t.created_at, datetime.min.time())
             cmp_at = t.completed_at if isinstance(t.completed_at, datetime) else datetime.combine(t.completed_at, datetime.min.time())
             lead_secs += (cmp_at - c_at).total_seconds()
-            
         if t.due_date:
             due = t.due_date.date() if isinstance(t.due_date, datetime) else t.due_date
-            if comp_date and due and comp_date <= due:
-                on_time += 1
-        # ------------------------------------------
-
+            if comp_date and due and comp_date <= due: on_time += 1
         if t.rating: ratings.append(t.rating)
         if t.feedback: feedbacks.append(t.feedback)
 
@@ -299,27 +314,41 @@ async def generate_report(request: ReportRequest, session: Session = Depends(get
     target = KPI_TARGETS.get(user.divisi, 5)
 
     kpi_data = {
-        "start_date": request.start_date, "end_date": request.end_date,
-        "total_tasks": total, "kpi_target": target,
-        "avg_lead_time_days": avg_lead, "avg_rating": avg_rate,
-        "on_time_percentage": on_time_pct, "feedbacks": feedbacks
+        "start_date": request.start_date, "end_date": request.end_date, "total_tasks": total, "kpi_target": target,
+        "avg_lead_time_days": avg_lead, "avg_rating": avg_rate, "on_time_percentage": on_time_pct, "feedbacks": feedbacks
     }
 
     try:
-        # --- MODEL 2.5 FLASH (YANG CANGGIH) ---
         model = genai.GenerativeModel('models/gemini-2.5-flash')
-        response = await model.generate_content_async(
-            create_kpi_prompt(user.nama, user.divisi, kpi_data),
-            generation_config={"response_mime_type": "application/json"}
-        )
-        return json.loads(response.text)
+        response = await model.generate_content_async(create_kpi_prompt(user.nama, user.divisi, kpi_data))
+        return json.loads(clean_json_string(response.text))
     except Exception as e:
         raise HTTPException(500, f"LLM Error: {str(e)}")
 
+# --- PROMPT DIVISI ---
 def create_division_kpi_prompt(divisi: str, kpi_data: dict) -> str:
     return f"""
-    Evaluasi Divisi {divisi}. Values: {CORE_VALUES}. Data: {kpi_data}.
-    Jawab JSON: narrative_report, chart_data, value_scores.
+    Evaluasi Divisi: {divisi}.
+    DATA KINERJA:
+    - Target Total: {kpi_data['kpi_target_total']}
+    - Aktual Total: {kpi_data['total_tasks']}
+    - % Deadline: {kpi_data['on_time_percentage']}%
+    - Avg Rating: {kpi_data['avg_rating']}
+    
+    PENTING: Output WAJIB berupa JSON MURNI tanpa markdown.
+    Struktur JSON:
+    {{
+        "narrative_report": "...",
+        "chart_data": {{
+            "label": "Total Tugas Divisi",
+            "actual": {kpi_data['total_tasks']},
+            "target": {kpi_data['kpi_target_total']}
+        }},
+        "value_scores": [
+             {{ "value_name": "Creative", "score": 0, "justification": "..." }},
+             ... (untuk 5 values)
+        ]
+    }}
     """
 
 @app.post("/generate-report/division")
@@ -331,16 +360,9 @@ async def generate_division_report(request: DivisionReportRequest, session: Sess
 
     users = session.exec(select(User).where(User.divisi == request.divisi)).all()
     if not users: raise HTTPException(404, "Divisi kosong")
-    
     u_ids = [u.id for u in users]
-    tasks = session.exec(select(Task).where(
-        Task.assignee_id.in_(u_ids),
-        Task.status == "Reviewed",
-        Task.completed_at >= start,
-        Task.completed_at <= end
-    )).all()
-
-    if not tasks: raise HTTPException(404, "Tidak ada data tugas divisi")
+    tasks = session.exec(select(Task).where(Task.assignee_id.in_(u_ids), Task.status == "Reviewed", Task.completed_at >= start, Task.completed_at <= end)).all()
+    if not tasks: raise HTTPException(404, "Tidak ada tugas Reviewed")
 
     total = len(tasks)
     on_time = 0
@@ -349,44 +371,31 @@ async def generate_division_report(request: DivisionReportRequest, session: Sess
     feedbacks = []
 
     for t in tasks:
-        # --- LOGIKA TANGGAL ROBUST (Anti-Error) ---
         comp_date = t.completed_at.date() if isinstance(t.completed_at, datetime) else t.completed_at
-        
         if t.completed_at and t.created_at:
             c_at = t.created_at if isinstance(t.created_at, datetime) else datetime.combine(t.created_at, datetime.min.time())
             cmp_at = t.completed_at if isinstance(t.completed_at, datetime) else datetime.combine(t.completed_at, datetime.min.time())
             lead_secs += (cmp_at - c_at).total_seconds()
-            
         if t.due_date:
             due = t.due_date.date() if isinstance(t.due_date, datetime) else t.due_date
-            if comp_date and due and comp_date <= due:
-                on_time += 1
-        # ------------------------------------------
-
+            if comp_date and due and comp_date <= due: on_time += 1
         if t.rating: ratings.append(t.rating)
         if t.feedback: feedbacks.append(t.feedback)
 
     avg_lead = (lead_secs / total / 86400) if total > 0 else 0
     avg_rate = (sum(ratings) / len(ratings)) if ratings else 0
     on_time_pct = (on_time / total * 100) if total > 0 else 0
-    
     interns = sum(1 for u in users if u.role == 'intern')
     target_total = KPI_TARGETS.get(request.divisi, 5) * interns
 
     kpi_data = {
-        "start_date": request.start_date, "end_date": request.end_date,
-        "total_members": interns, "total_tasks": total,
-        "kpi_target_total": target_total, "avg_lead_time_days": avg_lead,
-        "avg_rating": avg_rate, "on_time_percentage": on_time_pct, "feedbacks": feedbacks
+        "start_date": request.start_date, "end_date": request.end_date, "total_members": interns, "total_tasks": total,
+        "kpi_target_total": target_total, "avg_lead_time_days": avg_lead, "avg_rating": avg_rate, "on_time_percentage": on_time_pct, "feedbacks": feedbacks
     }
 
     try:
-        # --- MODEL 2.5 FLASH (YANG CANGGIH) ---
         model = genai.GenerativeModel('models/gemini-2.5-flash')
-        response = await model.generate_content_async(
-            create_division_kpi_prompt(request.divisi, kpi_data),
-            generation_config={"response_mime_type": "application/json"}
-        )
-        return json.loads(response.text)
+        response = await model.generate_content_async(create_division_kpi_prompt(request.divisi, kpi_data))
+        return json.loads(clean_json_string(response.text))
     except Exception as e:
         raise HTTPException(500, f"LLM Error: {str(e)}")
