@@ -1,3 +1,6 @@
+// src/components/ReportGenerator.jsx
+// VERSI BENAR: Isinya adalah FORM LAPORAN & GRAFIK (Bukan Tabel User)
+
 import React, { useState, useMemo } from 'react';
 import axios from 'axios';
 import {
@@ -74,7 +77,6 @@ function ReportGenerator({ users }) {
 
     try {
       const response = await axios.post(endpoint, requestBody);
-      console.log("🔍 RAW DATA:", response.data); 
       setReportData(response.data); 
       toast({ title: "Laporan Siap", status: "success", duration: 3000, isClosable: true, position: "top" });
     } catch (err) {
@@ -86,14 +88,8 @@ function ReportGenerator({ users }) {
   };
   
   const getChartData = () => {
-    if (!reportData) return null;
-    const chartObj = reportData.chart_data || reportData.chartData;
-    if (!chartObj) return null;
-    
-    const label = chartObj.label || "Kinerja";
-    const actual = parseInt(chartObj.actual || 0);
-    const target = parseInt(chartObj.target || 0);
-
+    if (!reportData || !reportData.chart_data) return null;
+    const { label, actual, target } = reportData.chart_data;
     return {
       labels: [label],
       datasets: [
@@ -170,15 +166,13 @@ function ReportGenerator({ users }) {
         <Box p={4} borderWidth={1} borderRadius="md" bg="gray.50">
           <Heading size="md" mb={4}>Hasil Laporan</Heading>
           
-          {/* GRAFIK */}
-          {chartData ? (
+          {chartData && (
             <Box mb={6} p={4} bg="white" borderRadius="md" shadow="sm">
               <Heading size="sm" mb={3}>Grafik Pencapaian</Heading>
               <Bar data={chartData} options={{ responsive: true }} />
             </Box>
-          ) : ( <Alert status="warning" mb={4}><AlertIcon />Grafik tidak tersedia.</Alert> )}
+          )}
           
-          {/* NARASI */}
           <Box p={4} bg="white" borderRadius="md" shadow="sm" mb={6}>
             <Heading size="sm" mb={3}>Analisis Naratif</Heading>
             <Text whiteSpace="pre-wrap"> 
@@ -186,7 +180,6 @@ function ReportGenerator({ users }) {
             </Text>
           </Box>
           
-          {/* CORE VALUES */}
           {valueScores.length > 0 && (
             <Box p={4} bg="white" borderRadius="md" shadow="sm">
               <Heading size="sm" mb={4}>Analisis 5 Core Values</Heading>

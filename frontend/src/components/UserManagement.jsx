@@ -1,3 +1,6 @@
+// src/components/UserManagement.jsx
+// VERSI BENAR: Isinya adalah TABEL MANAJEMEN USER (CRUD)
+
 import React, { useState } from 'react';
 import axios from 'axios';
 import {
@@ -15,7 +18,6 @@ function UserManagement({ users, onRefresh }) {
   const [editingUser, setEditingUser] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
 
-  // Form State
   const [nama, setNama] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -111,6 +113,7 @@ function UserManagement({ users, onRefresh }) {
             <FormControl mb={3}><FormLabel>Divisi</FormLabel>
                 <Select value={divisi} onChange={(e)=>setDivisi(e.target.value)}>
                     <option value="GD">GD</option><option value="JO">JO</option><option value="Staf">Staf</option><option value="PM">PM</option>
+                    <option value="SMO">SMO</option><option value="CC">CC</option><option value="PH">PH</option><option value="VO">VO</option><option value="EPM">EPM</option><option value="FA">FA</option><option value="PR">PR</option><option value="Pimpinan">Pimpinan</option>
                 </Select>
             </FormControl>
           </ModalBody>
