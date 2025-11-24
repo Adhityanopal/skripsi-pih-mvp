@@ -1,7 +1,4 @@
-// src/components/CompleteTaskModal.jsx
-// Ini adalah KOMPONEN BARU untuk alur submit tugas intern
-
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Modal,
   ModalOverlay,
@@ -12,118 +9,126 @@ import {
   ModalCloseButton,
   FormControl,
   FormLabel,
-  Input, // Kita pakai Input untuk link
+  Input,
   Button,
   VStack,
   Text,
-  useToast
+  useToast,
+  Alert,
+  AlertIcon,
+  Box
 } from '@chakra-ui/react';
 import axios from 'axios';
 
-// Komponen ini menerima:
-// - isOpen: boolean (apakah modal terbuka)
-// - onClose: fungsi (untuk menutup modal)
-// - task: object (tugas yang akan diselesaikan)
-// - onTaskCompleted: fungsi (callback setelah sukses)
+const API_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000';
+
 function CompleteTaskModal({ isOpen, onClose, task, onTaskCompleted }) {
   const [submissionLink, setSubmissionLink] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const toast = useToast();
+
+  // Efek untuk mengisi link jika sudah ada (misal revisi)
+  useEffect(() => {
+    if (task && task.submission_link) {
+      setSubmissionLink(task.submission_link);
+    } else {
+      setSubmissionLink('');
+    }
+  }, [task]);
 
   const handleSubmit = async (event) => {
     event.preventDefault();
     if (!submissionLink) {
       toast({
         title: "Link Wajib Diisi",
-        description: "Anda harus memasukkan link hasil pekerjaan.",
+        description: "Mohon masukkan link hasil pekerjaan Anda.",
         status: "warning",
-        duration: 3000,
-        isClosable: true,
         position: "top",
+        isClosable: true,
       });
       return;
     }
 
     setIsLoading(true);
-
-    // Siapkan body JSON sesuai skema TaskSubmission
-    const body = {
-      submission_link: submissionLink
-    };
-
     try {
-      // Panggil endpoint backend PUT /tasks/{task.id}/complete
-      // Kita tidak perlu mengirim token di sini, karena axios default
-      // di App.jsx sudah mengaturnya
-      const response = await axios.put(
-        `${import.meta.env.VITE_API_URL}/tasks/${task.id}/complete`, 
-        body
-      );
+      const response = await axios.put(`${API_URL}/tasks/${task.id}/complete`, {
+        submission_link: submissionLink
+      });
       
       toast({
-        title: "Tugas Selesai.",
-        description: `Tugas "${response.data.title}" telah ditandai selesai.`,
+        title: "Tugas Disubmit",
+        description: "Status tugas berubah menjadi 'Done'.",
         status: "success",
         duration: 3000,
         isClosable: true,
         position: "top",
       });
 
-      onTaskCompleted(response.data); // Panggil callback dengan data tugas baru
-      handleClose(); // Tutup modal
+      onTaskCompleted(response.data);
+      onClose();
 
     } catch (err) {
-      console.error("Error completing task:", err);
+      console.error("Error:", err);
       toast({
-        title: "Gagal Menyelesaikan Tugas.",
-        description: err.response?.data?.detail || "Terjadi kesalahan pada server.",
+        title: "Gagal Menyelesaikan Tugas",
+        description: err.response?.data?.detail || "Terjadi kesalahan server",
         status: "error",
-        duration: 5000,
-        isClosable: true,
         position: "top",
+        isClosable: true,
       });
     } finally {
       setIsLoading(false);
     }
   };
 
-  // Fungsi untuk mereset form saat modal ditutup
-  const handleClose = () => {
-      setSubmissionLink('');
-      setIsLoading(false);
-      onClose(); 
-  }
-
   return (
-    <Modal isOpen={isOpen} onClose={handleClose} isCentered>
+    <Modal isOpen={isOpen} onClose={onClose} isCentered size="lg">
       <ModalOverlay />
       <ModalContent as="form" onSubmit={handleSubmit}>
-        <ModalHeader>Selesaikan Tugas: {task?.title}</ModalHeader>
+        <ModalHeader>
+          {task?.status === 'Need Revision' ? "Submit Revisi Tugas" : "Selesaikan Tugas"}
+        </ModalHeader>
         <ModalCloseButton />
         <ModalBody>
-          <VStack spacing={4}>
-            <Text>Silakan masukkan link hasil pekerjaan Anda (misal: link Google Drive, Canva, atau Figma).</Text>
-            <FormControl isRequired>
-              <FormLabel>Link Hasil Pekerjaan</FormLabel>
-              <Input 
-                value={submissionLink} 
-                onChange={(e) => setSubmissionLink(e.target.value)} 
-                placeholder="https://google.drive.com/..." 
-              />
-            </FormControl>
+          <VStack spacing={5} align="stretch">
+            
+            {/* TAMPILKAN FEEDBACK JIKA INI REVISI */}
+            {task?.status === 'Need Revision' && (
+                <Alert status='error' variant='left-accent' borderRadius="md" flexDirection="column" alignItems="flex-start">
+                    <Box display="flex" alignItems="center" mb={2}>
+                        <AlertIcon />
+                        <Text fontWeight="bold">Perlu Revisi:</Text>
+                    </Box>
+                    <Text fontSize="sm" pl={9} fontStyle="italic">
+                        "{task.feedback}"
+                    </Text>
+                </Alert>
+            )}
+            
+            <Box>
+                <Text mb={2}>Masukkan link hasil pekerjaan terbaru (Google Drive, Canva, dll).</Text>
+                <FormControl isRequired>
+                  <FormLabel>Link Hasil</FormLabel>
+                  <Input 
+                      value={submissionLink} 
+                      onChange={(e) => setSubmissionLink(e.target.value)} 
+                      placeholder="https://..." 
+                      autoFocus
+                  />
+                </FormControl>
+            </Box>
+
           </VStack>
         </ModalBody>
 
         <ModalFooter>
-          <Button variant='ghost' mr={3} onClick={handleClose} type="button">
-            Batal
-          </Button>
+          <Button variant='ghost' mr={3} onClick={onClose}>Batal</Button>
           <Button 
-            colorScheme='green' // Ganti warna jadi hijau
-            type="submit"
+            colorScheme={task?.status === 'Need Revision' ? 'red' : 'green'} 
+            type="submit" 
             isLoading={isLoading}
           >
-            Submit & Tandai Selesai
+            {task?.status === 'Need Revision' ? 'Kirim Revisi' : 'Submit & Selesai'}
           </Button>
         </ModalFooter>
       </ModalContent>

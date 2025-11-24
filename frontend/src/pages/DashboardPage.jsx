@@ -1,5 +1,8 @@
 // src/pages/DashboardPage.jsx
-// Versi FINAL + FITUR DETAIL & FILTER 'TUGAS SAYA'
+// VERSI FINAL FIX: 
+// 1. Syntax Error diperbaiki (Safe)
+// 2. Filter 'Perlu Revisi' dipisah agar terlihat
+// 3. Filter 'Perlu Review' (Manager) diperjelas
 
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
@@ -9,15 +12,20 @@ import {
   Flex, Spacer, Tag, Badge, ButtonGroup,
   Tabs, TabList, TabPanels, Tab, TabPanel, Tooltip
 } from '@chakra-ui/react';
-// Tambahkan InfoIcon
-import { CheckCircleIcon, TimeIcon, CheckIcon, AddIcon, StarIcon, EditIcon, InfoIcon } from '@chakra-ui/icons'; 
 
+// Impor semua ikon
+import { 
+  CheckCircleIcon, TimeIcon, CheckIcon, AddIcon, 
+  StarIcon, EditIcon, InfoIcon, WarningTwoIcon, RepeatIcon 
+} from '@chakra-ui/icons'; 
+
+// Impor komponen custom
 import AddTaskForm from '../components/AddTaskForm';
 import ReviewTaskForm from '../components/ReviewTaskForm';
 import CompleteTaskModal from '../components/CompleteTaskModal';
 import ReportGenerator from '../components/ReportGenerator';
 import UserManagement from '../components/UserManagement';
-import TaskDetailModal from '../components/TaskDetailModal'; // <-- Impor Modal Detail
+import TaskDetailModal from '../components/TaskDetailModal';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000';
 
@@ -25,24 +33,25 @@ function DashboardPage({ user, usersList, onLogout }) {
   const [tasks, setTasks] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
+  
+  // Filter default 'all'. Opsi: 'all', 'my_tasks', 'to_do', 'revision', 'done', 'reviewed'
   const [filterStatus, setFilterStatus] = useState('all');
   
   const [currentTask, setCurrentTask] = useState(null); 
   const toast = useToast();
   
-  const { isOpen: isAddTaskModalOpen, onOpen: onOpenAddTaskModal, onClose: onCloseAddTaskModal } = useDisclosure();
-  const { isOpen: isReviewModalOpen, onOpen: onOpenReviewModal, onClose: onCloseReviewModal } = useDisclosure();
-  const { isOpen: isCompleteModalOpen, onOpen: onOpenCompleteModal, onClose: onCloseCompleteModal } = useDisclosure();
-  
-  // Hook untuk Modal Detail
-  const { isOpen: isDetailModalOpen, onOpen: onOpenDetailModal, onClose: onCloseDetailModal } = useDisclosure();
+  // Hooks untuk Modal
+  const addTaskDisclosure = useDisclosure();
+  const reviewDisclosure = useDisclosure();
+  const completeDisclosure = useDisclosure();
+  const detailDisclosure = useDisclosure();
   
   const fetchTasks = async () => {
     setIsLoading(true);
     setError(null);
     try {
       let endpointPath = '/tasks'; 
-      if (user.role === 'intern') {
+      if (user?.role === 'intern') {
         endpointPath = '/tasks/me'; 
       }
       const response = await axios.get(`${API_URL}${endpointPath}`);
@@ -59,43 +68,45 @@ function DashboardPage({ user, usersList, onLogout }) {
     if (user) fetchTasks(); 
   }, [user]);
 
-  const handleTaskCompleted = (completedTask) => {
-    setTasks(prev => prev.map(t => t.id === completedTask.id ? completedTask : t));
+  // --- Update State Lokal ---
+  const updateLocalTask = (updatedTask) => {
+    setTasks(prev => prev.map(t => t.id === updatedTask.id ? updatedTask : t));
   };
-  const handleTaskAdded = (newTask) => {
+  const addTaskLocally = (newTask) => {
     setTasks(prev => [newTask, ...prev]);
   };
-  const handleTaskReviewed = (reviewedTask) => {
-    setTasks(prev => prev.map(t => t.id === reviewedTask.id ? reviewedTask : t));
-  };
-  
-  const openReviewModal = (task) => { setCurrentTask(task); onOpenReviewModal(); };
-  const openCompleteModal = (task) => { setCurrentTask(task); onOpenCompleteModal(); };
-  
-  // Fungsi Buka Detail
-  const openDetailModal = (task) => { setCurrentTask(task); onOpenDetailModal(); };
+
+  // --- Modal Handlers ---
+  const openReviewModal = (task) => { setCurrentTask(task); reviewDisclosure.onOpen(); };
+  const openCompleteModal = (task) => { setCurrentTask(task); completeDisclosure.onOpen(); };
+  const openDetailModal = (task) => { setCurrentTask(task); detailDisclosure.onOpen(); };
   
   const getAssigneeName = (assigneeId) => {
-      if (!usersList) return 'Loading...'; 
+      if (!usersList) return '...'; 
       const assignee = usersList.find(u => u.id === assigneeId);
       return assignee ? assignee.nama : 'Tidak Ditugaskan';
   };
 
+  // --- LOGIKA FILTER ---
   const filteredTasks = tasks.filter(task => {
     const status = task.status ? task.status.trim() : "";
     
-    // Filter 'my_tasks': Hanya tampilkan tugas yang assignee_id nya sama dengan ID user yang login
     if (filterStatus === 'my_tasks') return task.assignee_id === user.id;
-
     if (filterStatus === 'all') return true;
+    
+    // Filter Status Spesifik
     if (filterStatus === 'to_do') return status === 'To Do';
+    if (filterStatus === 'revision') return status === 'Need Revision';
     if (filterStatus === 'done') return status === 'Done';
     if (filterStatus === 'reviewed') return status === 'Reviewed';
+    
     return true;
   });
 
   return (
-    <Box p={5} maxWidth="900px" margin="auto">
+    <Box p={5} maxWidth="1000px" margin="auto">
+      
+      {/* HEADER */}
       <Flex mb={6} alignItems="center" flexWrap="wrap" gap={4}>
         <Box>
           <Heading size="lg">Dashboard</Heading>
@@ -103,7 +114,7 @@ function DashboardPage({ user, usersList, onLogout }) {
         </Box>
         <Spacer />
         {user?.role !== 'intern' && (
-          <Button leftIcon={<AddIcon />} colorScheme='teal' size="sm" onClick={onOpenAddTaskModal}>
+          <Button leftIcon={<AddIcon />} colorScheme='teal' size="sm" onClick={addTaskDisclosure.onOpen}>
             Tambah Tugas
           </Button>
         )}
@@ -112,6 +123,7 @@ function DashboardPage({ user, usersList, onLogout }) {
         </Button>
       </Flex>
 
+      {/* TABS */}
       <Tabs isFitted variant='enclosed' colorScheme='teal' isLazy>
         <TabList mb='1em'>
           <Tab _selected={{ color: 'white', bg: 'teal.500' }}>Daftar Tugas</Tab>
@@ -120,70 +132,109 @@ function DashboardPage({ user, usersList, onLogout }) {
         </TabList>
 
         <TabPanels>
+          
+          {/* PANEL 1: DAFTAR TUGAS */}
           <TabPanel p={0}>
-            
-            {/* Filter Buttons */}
-            <ButtonGroup size="sm" isAttached variant="outline" mb={4} flexWrap="wrap">
-              <Button onClick={() => setFilterStatus('all')} isActive={filterStatus === 'all'} _active={{ bg: 'teal.600', color: 'white' }}>
-                Semua
-              </Button>
-              
-              {/* Tombol Filter 'Tugas Saya' */}
-              <Button onClick={() => setFilterStatus('my_tasks')} isActive={filterStatus === 'my_tasks'} _active={{ bg: 'teal.600', color: 'white' }}>
-                Tugas Anda
-              </Button>
-
-              <Button onClick={() => setFilterStatus('to_do')} isActive={filterStatus === 'to_do'} _active={{ bg: 'teal.600', color: 'white' }}>
-                To Do
-              </Button>
-              {user.role !== 'intern' && (
-                <Button onClick={() => setFilterStatus('done')} isActive={filterStatus === 'done'} _active={{ bg: 'teal.600', color: 'white' }}>
-                  Perlu Review
+            <Flex overflowX="auto" pb={2} mb={4}>
+                <ButtonGroup size="sm" isAttached variant="outline">
+                <Button onClick={() => setFilterStatus('all')} isActive={filterStatus === 'all'} _active={{ bg: 'teal.600', color: 'white' }}>
+                    Semua
                 </Button>
-              )}
-              <Button onClick={() => setFilterStatus('reviewed')} isActive={filterStatus === 'reviewed'} _active={{ bg: 'teal.600', color: 'white' }}>
-                Selesai
-              </Button>
-            </ButtonGroup>
+                <Button onClick={() => setFilterStatus('my_tasks')} isActive={filterStatus === 'my_tasks'} _active={{ bg: 'teal.600', color: 'white' }}>
+                    Tugas Saya
+                </Button>
+                <Button onClick={() => setFilterStatus('to_do')} isActive={filterStatus === 'to_do'} _active={{ bg: 'teal.600', color: 'white' }}>
+                    To Do
+                </Button>
+                <Button onClick={() => setFilterStatus('revision')} isActive={filterStatus === 'revision'} _active={{ bg: 'red.500', color: 'white' }} colorScheme="red">
+                    Perlu Revisi
+                </Button>
+                
+                {/* Filter Khusus Manajer */}
+                {user?.role !== 'intern' && (
+                    <Button onClick={() => setFilterStatus('done')} isActive={filterStatus === 'done'} _active={{ bg: 'teal.600', color: 'white' }}>
+                    Perlu Review (Done)
+                    </Button>
+                )}
+                
+                <Button onClick={() => setFilterStatus('reviewed')} isActive={filterStatus === 'reviewed'} _active={{ bg: 'teal.600', color: 'white' }}>
+                    Selesai
+                </Button>
+                </ButtonGroup>
+            </Flex>
             
             {isLoading && <Box textAlign="center" p={10}><Spinner /><Text mt={4}>Memuat...</Text></Box>}
             {error && <Alert status='error'><AlertIcon />{error}</Alert>}
             
             {!isLoading && !error && (
-              <List spacing={4}>
+              <List spacing={3}>
                 {filteredTasks.length === 0 ? (
-                  <Box p={5} borderWidth={1} borderRadius="md" bg="gray.50" textAlign="center"><Text color="gray.500">Tidak ada tugas.</Text></Box>
+                    <Box p={5} textAlign="center" bg="gray.50" borderRadius="md">
+                        <Text color="gray.500">Tidak ada tugas di kategori ini.</Text>
+                    </Box>
                 ) : (
                   filteredTasks.map((task) => (
-                    <ListItem key={task.id} p={4} borderWidth={1} borderRadius="md" _hover={{ shadow: 'md' }} bg="white" display="flex" alignItems="center">
-                      <ListIcon as={task.status === 'Reviewed' ? CheckCircleIcon : (task.status === 'Done' ? EditIcon : TimeIcon)} color={task.status === 'Reviewed' ? 'green.500' : (task.status === 'Done' ? 'orange.500' : 'gray.400')} fontSize="2xl" mr={4} />
+                    <ListItem key={task.id} p={3} borderWidth={1} borderRadius="md" _hover={{ shadow: 'md' }} bg="white" display="flex" alignItems="center">
+                      
+                      {/* Ikon Status */}
+                      <ListIcon 
+                        as={
+                          task.status === 'Reviewed' ? CheckCircleIcon : 
+                          (task.status === 'Done' ? CheckIcon : 
+                          (task.status === 'Need Revision' ? WarningTwoIcon : TimeIcon))
+                        } 
+                        color={
+                          task.status === 'Reviewed' ? 'green.500' : 
+                          (task.status === 'Done' ? 'blue.500' : 
+                          (task.status === 'Need Revision' ? 'red.500' : 'gray.400'))
+                        }
+                        fontSize="xl" mr={3}
+                      />
+                      
+                      {/* Info Tugas */}
                       <Box flexGrow={1}>
-                        <Heading size="sm" mb={1} display="flex" alignItems="center">
-                           {task.title}
-                           {/* Tombol Info Kecil untuk Detail */}
-                           <Tooltip label="Lihat Detail & Link" fontSize="md">
-                             <IconButton 
-                               icon={<InfoIcon />} 
-                               size="xs" 
-                               variant="ghost" 
-                               colorScheme="blue" 
-                               ml={2} 
-                               onClick={() => openDetailModal(task)} 
-                             />
+                        <Flex alignItems="center">
+                           <Heading size="xs" mr={2}>{task.title}</Heading>
+                           <Tooltip label="Lihat Detail">
+                             <IconButton icon={<InfoIcon />} size="xs" variant="ghost" colorScheme="blue" onClick={() => openDetailModal(task)} />
                            </Tooltip>
-                        </Heading>
-                        <Text fontSize="xs" color="gray.500" mb={1}>
-                          {user.role !== 'intern' && <span>Assigned to: <b>{getAssigneeName(task.assignee_id)}</b> • </span>}
-                          Priority: <Badge colorScheme={task.priority === 'High' ? 'red' : 'gray'}>{task.priority}</Badge> 
+                        </Flex>
+                        
+                        <Text fontSize="xs" color="gray.500">
+                          {user.role !== 'intern' && <span>To: <b>{getAssigneeName(task.assignee_id)}</b> • </span>}
+                          Prioritas: <Badge colorScheme={task.priority === 'High' ? 'red' : 'gray'} fontSize="0.6em">{task.priority}</Badge>
                           {' • '}
-                          Status: <Tag size="sm" colorScheme={task.status === 'Reviewed' ? 'green' : (task.status === 'Done' ? 'orange' : 'gray')}>{task.status}</Tag>
+                          Status: <Tag size="sm" colorScheme={task.status === 'Need Revision' ? 'red' : 'gray'}>{task.status}</Tag>
                         </Text>
-                        {task.rating && <Tag size="sm" colorScheme="yellow" mt={2}><StarIcon mr={2} /> {task.rating}/5</Tag>}
+
+                        {/* Rating */}
+                        {task.rating && (
+                          <Tag size="sm" colorScheme="yellow" mt={1} variant="subtle">
+                            <StarIcon mr={1} /> {task.rating}/5
+                          </Tag>
+                        )}
                       </Box>
                       
-                      {user.role === 'intern' && task.status === 'To Do' && <IconButton icon={<CheckIcon />} size='sm' colorScheme='green' onClick={() => openCompleteModal(task)} ml={2} aria-label="Selesaikan" />}
-                      {user.role !== 'intern' && task.status === 'Done' && <IconButton icon={<EditIcon />} size='sm' colorScheme='yellow' onClick={() => openReviewModal(task)} ml={2} aria-label="Review" />}
+                      {/* Aksi: Submit/Revisi (Intern) */}
+                      {user.role === 'intern' && (task.status === 'To Do' || task.status === 'Need Revision') && (
+                        <Tooltip label={task.status === 'Need Revision' ? "Submit Revisi" : "Selesaikan"}>
+                            <IconButton 
+                                icon={task.status === 'Need Revision' ? <RepeatIcon /> : <CheckIcon />} 
+                                size='sm' 
+                                colorScheme={task.status === 'Need Revision' ? 'red' : 'green'} 
+                                onClick={() => openCompleteModal(task)} 
+                                ml={2} 
+                            />
+                        </Tooltip>
+                      )}
                       
+                      {/* Aksi: Review (Manajer) */}
+                      {user.role !== 'intern' && (task.status === 'Done' || task.status === 'Need Revision') && (
+                        <Tooltip label="Review Tugas">
+                            <IconButton icon={<EditIcon />} size='sm' colorScheme='yellow' onClick={() => openReviewModal(task)} ml={2} />
+                        </Tooltip>
+                      )}
+
                     </ListItem>
                   ))
                 )}
@@ -191,32 +242,30 @@ function DashboardPage({ user, usersList, onLogout }) {
             )}
           </TabPanel>
           
+          {/* PANEL 2 & 3 (Hanya Non-Intern) */}
           {user?.role !== 'intern' && (
-            <TabPanel p={0}>
-              <ReportGenerator users={usersList} /> 
-            </TabPanel>
+            <>
+                <TabPanel p={0}>
+                  <ReportGenerator users={usersList} /> 
+                </TabPanel>
+                <TabPanel p={0}>
+                  <UserManagement users={usersList} onRefresh={() => window.location.reload()} />
+                </TabPanel>
+            </>
           )}
-
-          {user?.role !== 'intern' && (
-            <TabPanel p={0}>
-              <UserManagement users={usersList} onRefresh={() => window.location.reload()} />
-            </TabPanel>
-          )}
-
         </TabPanels>
       </Tabs>
 
-      {/* Render Modals */}
+      {/* MODALS */}
       {user?.role !== 'intern' && (
         <>
-            <AddTaskForm isOpen={isAddTaskModalOpen} onClose={onCloseAddTaskModal} projectId={1} users={usersList ? usersList.filter(u => u.role === 'intern') : []} onTaskAdded={handleTaskAdded} />
-            <ReviewTaskForm isOpen={isReviewModalOpen} onClose={onCloseReviewModal} task={currentTask} onTaskReviewed={handleTaskReviewed} />
+            <AddTaskForm isOpen={addTaskDisclosure.isOpen} onClose={addTaskDisclosure.onClose} projectId={1} users={usersList ? usersList.filter(u => u.role === 'intern') : []} onTaskAdded={addTaskLocally} />
+            <ReviewTaskForm isOpen={reviewDisclosure.isOpen} onClose={reviewDisclosure.onClose} task={currentTask} onTaskReviewed={updateLocalTask} />
         </>
       )}
-      <CompleteTaskModal isOpen={isCompleteModalOpen} onClose={onCloseCompleteModal} task={currentTask} onTaskCompleted={handleTaskCompleted} />
+      <CompleteTaskModal isOpen={completeDisclosure.isOpen} onClose={completeDisclosure.onClose} task={currentTask} onTaskCompleted={updateLocalTask} />
+      <TaskDetailModal isOpen={detailDisclosure.isOpen} onClose={detailDisclosure.onClose} task={currentTask} />
       
-      {/* Modal Detail (Baru) */}
-      <TaskDetailModal isOpen={isDetailModalOpen} onClose={onCloseDetailModal} task={currentTask} />
     </Box>
   );
 }
