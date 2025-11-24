@@ -1,5 +1,5 @@
 // src/components/ReportGenerator.jsx
-// Versi SAFETY FIRST - Mencegah layar putih jika data LLM tidak sempurna
+// Versi ROBUST & DEBUG - Toleransi tinggi terhadap format JSON LLM
 
 import React, { useState, useMemo } from 'react';
 import axios from 'axios';
@@ -19,11 +19,7 @@ ChartJS.register(CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend)
 const API_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000';
 
 function ReportGenerator({ users }) { 
-  
-  // Guard clause aman
-  if (!users) {
-    return <Text>Memuat data pengguna...</Text>;
-  }
+  if (!users) return <Text>Memuat data...</Text>;
 
   const [reportType, setReportType] = useState('individu');
   const [selectedUserId, setSelectedUserId] = useState('');
@@ -46,7 +42,6 @@ function ReportGenerator({ users }) {
 
   const handleSubmit = async (event) => {
     event.preventDefault();
-    
     if (!startDate || !endDate) {
         toast({ title: "Tanggal wajib diisi", status: "warning", duration: 3000, isClosable: true });
         return;
@@ -54,35 +49,22 @@ function ReportGenerator({ users }) {
     
     let endpoint = '';
     let requestBody = {};
-    let isFormValid = false;
 
     if (reportType === 'individu') {
-      if (selectedUserId) {
-        endpoint = `${API_URL}/generate-report`;
-        requestBody = {
-          user_id: parseInt(selectedUserId),
-          start_date: startDate,
-          end_date: endDate
-        };
-        isFormValid = true;
-      } else {
-        toast({ title: "Pengguna wajib dipilih", status: "warning", duration: 3000, isClosable: true });
+      if (!selectedUserId) {
+        toast({ title: "Pilih pengguna", status: "warning", duration: 3000, isClosable: true });
+        return;
       }
-    } else if (reportType === 'divisi') {
-      if (selectedDivisi) {
-        endpoint = `${API_URL}/generate-report/division`; 
-        requestBody = {
-          divisi: selectedDivisi,
-          start_date: startDate,
-          end_date: endDate
-        };
-        isFormValid = true;
-      } else {
-        toast({ title: "Divisi wajib dipilih", status: "warning", duration: 3000, isClosable: true });
+      endpoint = `${API_URL}/generate-report`;
+      requestBody = { user_id: parseInt(selectedUserId), start_date: startDate, end_date: endDate };
+    } else {
+      if (!selectedDivisi) {
+        toast({ title: "Pilih divisi", status: "warning", duration: 3000, isClosable: true });
+        return;
       }
+      endpoint = `${API_URL}/generate-report/division`; 
+      requestBody = { divisi: selectedDivisi, start_date: startDate, end_date: endDate };
     }
-
-    if (!isFormValid) return;
 
     setIsLoading(true);
     setError(null);
@@ -90,55 +72,56 @@ function ReportGenerator({ users }) {
 
     try {
       const response = await axios.post(endpoint, requestBody);
-      console.log("Data Laporan Diterima:", response.data); // Debugging
+      console.log("🔍 RAW DATA DARI LLM:", response.data); // <-- CEK CONSOLE (F12) DISINI!
       setReportData(response.data); 
-      toast({
-        title: "Laporan Berhasil Dibuat",
-        status: "success",
-        duration: 3000,
-        isClosable: true,
-        position: "top",
-      });
+      toast({ title: "Laporan Siap", status: "success", duration: 3000, isClosable: true, position: "top" });
     } catch (err) {
-      console.error("Error generating report:", err);
-      const errorMessage = err.response?.data?.detail || "Gagal menghasilkan laporan. Cek koneksi atau data.";
-      setError(errorMessage);
-      toast({
-        title: "Gagal Membuat Laporan",
-        description: errorMessage,
-        status: "error",
-        duration: 5000,
-        isClosable: true,
-        position: "top",
-      });
+      console.error("Error:", err);
+      setError(err.response?.data?.detail || "Gagal generate laporan.");
     } finally {
       setIsLoading(false);
     }
   };
   
-  // --- Fungsi Chart Aman ---
+  // --- Fungsi Chart Super Aman ---
   const getChartData = () => {
-    // Cek apakah data chart ada dan valid
-    if (!reportData || !reportData.chart_data) return null;
+    if (!reportData) return null;
     
-    const { label, actual, target } = reportData.chart_data;
+    // Coba cari di berbagai kemungkinan nama key
+    const chartObj = reportData.chart_data || reportData.chartData || reportData.data_grafik;
+
+    if (!chartObj) {
+        console.warn("Objek chart tidak ditemukan di JSON");
+        return null;
+    }
     
-    // Cek jika nilai actual/target undefined
-    if (actual === undefined || target === undefined) return null;
+    // Ambil nilai dengan aman (handle string atau number)
+    const label = chartObj.label || "Kinerja";
+    const actual = parseInt(chartObj.actual || chartObj.aktual || 0);
+    const target = parseInt(chartObj.target || 0);
 
     return {
-      labels: [label || "Kinerja"],
+      labels: [label],
       datasets: [
-        { label: 'Aktual Selesai', data: [actual], backgroundColor: 'rgba(54, 162, 235, 0.6)' },
-        { label: 'Target KPI', data: [target], backgroundColor: 'rgba(255, 99, 132, 0.6)' },
+        { label: 'Aktual', data: [actual], backgroundColor: 'rgba(54, 162, 235, 0.6)' },
+        { label: 'Target', data: [target], backgroundColor: 'rgba(255, 99, 132, 0.6)' },
       ],
     };
   };
+  
+  // --- Fungsi Value Scores Aman ---
+  const getValueScores = () => {
+      if (!reportData) return [];
+      // Coba berbagai key
+      const scores = reportData.value_scores || reportData.valueScores || reportData.nilai_inti || [];
+      return Array.isArray(scores) ? scores : [];
+  };
+
   const chartData = getChartData();
+  const valueScores = getValueScores();
 
   return (
     <Box>
-      {/* Form Input */}
       <Box as="form" onSubmit={handleSubmit} p={4} borderWidth={1} borderRadius="md" mb={6}>
         <VStack spacing={4}>
           <FormControl>
@@ -153,8 +136,8 @@ function ReportGenerator({ users }) {
 
           {reportType === 'individu' && (
             <FormControl isRequired>
-              <FormLabel>Pilih Pengguna (Intern)</FormLabel>
-              <Select placeholder='Pilih Anggota Tim Intern' value={selectedUserId} onChange={(e) => setSelectedUserId(e.target.value)}>
+              <FormLabel>Pilih Pengguna</FormLabel>
+              <Select placeholder='Pilih Anggota' value={selectedUserId} onChange={(e) => setSelectedUserId(e.target.value)}>
                 {users && users.filter(u => u.role === 'intern').map(user => (
                   <option key={user.id} value={user.id}>{user.nama} ({user.divisi})</option>
                 ))}
@@ -175,77 +158,68 @@ function ReportGenerator({ users }) {
           
           <SimpleGrid columns={2} spacing={4} width="100%">
             <FormControl isRequired>
-              <FormLabel>Tanggal Mulai</FormLabel>
+              <FormLabel>Dari Tanggal</FormLabel>
               <Input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
             </FormControl>
             <FormControl isRequired>
-              <FormLabel>Tanggal Selesai</FormLabel>
+              <FormLabel>Sampai Tanggal</FormLabel>
               <Input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
             </FormControl>
           </SimpleGrid>
           
-          <Button type="submit" colorScheme="teal" isLoading={isLoading} width="100%">
-            Generate Laporan
-          </Button>
+          <Button type="submit" colorScheme="teal" isLoading={isLoading} width="100%">Generate Laporan</Button>
         </VStack>
       </Box>
 
-      {/* Area Hasil */}
-      {isLoading && (
-        <Box textAlign="center" p={10}>
-          <Spinner size="xl" />
-          <Text mt={4}>Menghubungi LLM... Mohon tunggu...</Text>
-        </Box>
-      )}
+      {isLoading && <Box textAlign="center" p={10}><Spinner size="xl" /><Text mt={4}>Analisis AI sedang berjalan...</Text></Box>}
       
-      {error && (
-        <Alert status='error' borderRadius="md"><AlertIcon />{error}</Alert>
-      )}
+      {error && <Alert status='error'><AlertIcon />{error}</Alert>}
 
-      {/* Render Hasil HANYA jika reportData ada */}
       {reportData && (
         <Box p={4} borderWidth={1} borderRadius="md" bg="gray.50">
-          <Heading size="md" mb={4}>Hasil Laporan Kinerja</Heading>
+          <Heading size="md" mb={4}>Laporan Kinerja</Heading>
           
-          {/* Grafik - Render hanya jika data valid */}
+          {/* Grafik */}
           {chartData ? (
             <Box mb={6} p={4} bg="white" borderRadius="md" shadow="sm">
-              <Heading size="sm" mb={3}>Grafik KPI Objektif</Heading>
+              <Heading size="sm" mb={3}>Grafik Pencapaian</Heading>
               <Bar data={chartData} options={{ responsive: true }} />
             </Box>
           ) : (
-            <Alert status="warning" mb={4}><AlertIcon />Data grafik tidak lengkap dari LLM.</Alert>
+            <Alert status="warning" mb={4}><AlertIcon />Data grafik tidak terdeteksi. Cek Console.</Alert>
           )}
           
           {/* Narasi */}
-          <Box p={4} bg="white" borderRadius="md" shadow="sm">
-            <Heading size="sm" mb={3}>Analisis Naratif (LLM)</Heading>
+          <Box p={4} bg="white" borderRadius="md" shadow="sm" mb={6}>
+            <Heading size="sm" mb={3}>Analisis Naratif</Heading>
             <Text whiteSpace="pre-wrap"> 
-              {reportData.narrative_report || "Tidak ada narasi yang dihasilkan."}
+              {reportData.narrative_report || reportData.laporan_naratif || "Tidak ada narasi."}
             </Text>
           </Box>
           
-          {/* Core Values - Pastikan Array sebelum di-map */}
-          {Array.isArray(reportData.value_scores) && reportData.value_scores.length > 0 && (
-            <Box mt={6} p={4} bg="white" borderRadius="md" shadow="sm">
+          {/* 5 Core Values */}
+          {valueScores.length > 0 ? (
+            <Box p={4} bg="white" borderRadius="md" shadow="sm">
               <Heading size="sm" mb={4}>Analisis 5 Core Values</Heading>
               <VStack spacing={4} align="stretch">
-                {reportData.value_scores.map((value, index) => (
+                {valueScores.map((value, index) => (
                   <Stat key={index} p={3} borderWidth={1} borderRadius="md" bg="gray.50">
                     <Flex>
                       <Box>
-                        <StatLabel color="gray.600">{value.value_name || "Value"}</StatLabel>
-                        <StatNumber fontSize="2xl">{value.score} / 5</StatNumber>
+                        <StatLabel color="gray.600">{value.value_name || value.name || "Value"}</StatLabel>
+                        <StatNumber fontSize="2xl">{value.score || 0} / 5</StatNumber>
                       </Box>
                       <Spacer />
                       <Text fontSize="sm" color="gray.700" maxWidth="70%" fontStyle="italic">
-                        "{value.justification || "-"}"
+                        "{value.justification || value.reason || "-"}"
                       </Text>
                     </Flex>
                   </Stat>
                 ))}
               </VStack>
             </Box>
+          ) : (
+            <Alert status="info"><AlertIcon />Detail Core Values tidak tersedia di respons ini.</Alert>
           )}
         </Box>
       )}
