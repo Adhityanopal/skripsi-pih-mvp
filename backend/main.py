@@ -1,7 +1,3 @@
-# main.py - FULL CODE FINAL (Versi Prompt Lengkap 5 Core Values)
-# Mencakup: Auth, CRUD, Revisi, dan Prompt LLM yang sangat eksplisit.
-
-# --- 1. IMPOR LIBRARY ---
 from fastapi import FastAPI, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
 from fastapi.middleware.cors import CORSMiddleware
@@ -10,25 +6,15 @@ from typing import Optional, List
 from datetime import datetime, timedelta, date
 import google.generativeai as genai
 import json
-import re 
-
-# --- 2. IMPOR LOKAL ---
 from config import settings
 from database import create_db_and_tables, get_session, engine
-from models import (
-    User, Project, Task 
-)
+from models import User, Project, Task 
 from auth import (
-    get_password_hash, 
-    verify_password, 
-    create_access_token, 
-    get_current_user,
-    get_current_active_manager,
-    Token
+    get_password_hash, verify_password, create_access_token, 
+    get_current_user, get_current_active_manager, Token
 )
 
-# --- 3. SKEMA PYDANTIC (Input/Output API) ---
-
+# --- SKEMA PYDANTIC ---
 class UserRead(SQLModel):
     id: int
     nama: str
@@ -77,6 +63,7 @@ class TaskRead(SQLModel):
     submission_link: Optional[str] = None
     rating: Optional[int] = None
     feedback: Optional[str] = None
+    revision_count: int
     project_id: int
     assignee_id: int
 
@@ -98,16 +85,12 @@ class DivisionReportRequest(SQLModel):
     start_date: str 
     end_date: str   
 
-# --- 4. INISIALISASI APP & CORS ---
-
+# --- INISIALISASI APP ---
 app = FastAPI(title="API Sistem Pelaporan Kinerja PIH")
-
-# Konfigurasi CORS Sapu Jagat (Allow All)
-origins = ["*"]
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"], 
     allow_headers=["*"], 
@@ -115,35 +98,29 @@ app.add_middleware(
 
 try:
     genai.configure(api_key=settings.GEMINI_API_KEY)
-    print("INFO:     Konfigurasi Gemini API berhasil.")
+    print("INFO: Konfigurasi Gemini API berhasil.")
 except Exception as e:
-    print(f"ERROR:   Konfigurasi Gemini API GAGAL: {e}")
+    print(f"ERROR: Konfigurasi Gemini API GAGAL: {e}")
 
 @app.on_event("startup")
 def on_startup():
     create_db_and_tables()
 
-# --- 5. ENDPOINT AUTH & USER ---
+# --- ENDPOINT AUTH & USER ---
 @app.post("/token", response_model=Token)
 async def login_for_access_token(session: Session = Depends(get_session), form_data: OAuth2PasswordRequestForm = Depends()):
-    statement = select(User).where(User.email == form_data.username)
-    user = session.exec(statement).first()
+    user = session.exec(select(User).where(User.email == form_data.username)).first()
     if not user or not verify_password(form_data.password, user.hashed_password):
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Email/Password salah", headers={"WWW-Authenticate": "Bearer"})
-    
-    access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
-    access_token = create_access_token(data={"sub": user.email}, expires_delta=access_token_expires)
-    return {"access_token": access_token, "token_type": "bearer"}
+        raise HTTPException(status_code=401, detail="Email/Password salah")
+    token = create_access_token(data={"sub": user.email})
+    return {"access_token": token, "token_type": "bearer"}
 
 @app.post("/users", response_model=UserRead)
 def create_user(*, session: Session = Depends(get_session), user_data: UserCreate):
-    statement_check = select(User).where(User.email == user_data.email)
-    if session.exec(statement_check).first():
+    if session.exec(select(User).where(User.email == user_data.email)).first():
         raise HTTPException(status_code=400, detail="Email sudah terdaftar")
-        
-    hashed_password = get_password_hash(user_data.password)
     user_dict = user_data.model_dump()
-    user_dict["hashed_password"] = hashed_password
+    user_dict["hashed_password"] = get_password_hash(user_data.password)
     del user_dict["password"] 
     db_user = User(**user_dict)
     session.add(db_user)
@@ -156,45 +133,36 @@ async def read_users_me(current_user: User = Depends(get_current_user)):
     return current_user
 
 @app.get("/users", response_model=List[UserRead])
-async def read_users(session: Session = Depends(get_session), current_manager: User = Depends(get_current_active_manager)):
+async def read_users(session: Session = Depends(get_session), manager: User = Depends(get_current_active_manager)):
     return session.exec(select(User)).all()
 
 @app.put("/users/{user_id}", response_model=UserRead)
-def update_user(*, session: Session = Depends(get_session), user_id: int, user_update: UserUpdate, current_manager: User = Depends(get_current_active_manager)):
+def update_user(*, session: Session = Depends(get_session), user_id: int, user_update: UserUpdate, manager: User = Depends(get_current_active_manager)):
     db_user = session.get(User, user_id)
     if not db_user: raise HTTPException(404, "User not found")
-    user_data = user_update.model_dump(exclude_unset=True)
-    if "password" in user_data and user_data["password"]:
-        user_data["hashed_password"] = get_password_hash(user_data["password"])
-        del user_data["password"]
-    for key, value in user_data.items(): setattr(db_user, key, value)
+    data = user_update.model_dump(exclude_unset=True)
+    if "password" in data:
+        data["hashed_password"] = get_password_hash(data.pop("password"))
+    for k, v in data.items(): setattr(db_user, k, v)
     session.add(db_user)
     session.commit()
     session.refresh(db_user)
     return db_user
 
 @app.delete("/users/{user_id}")
-def delete_user(*, session: Session = Depends(get_session), user_id: int, current_manager: User = Depends(get_current_active_manager)):
+def delete_user(*, session: Session = Depends(get_session), user_id: int, manager: User = Depends(get_current_active_manager)):
     user = session.get(User, user_id)
     if not user: raise HTTPException(404, "User not found")
-    if user.id == current_manager.id: raise HTTPException(400, "Tidak bisa hapus diri sendiri")
+    if user.id == manager.id: raise HTTPException(400, "Tidak bisa hapus diri sendiri")
     session.delete(user)
     session.commit()
     return {"ok": True}
 
-# --- 6. ENDPOINT PROJECT & TASK ---
-@app.post("/projects", response_model=ProjectRead)
-def create_project(*, session: Session = Depends(get_session), project_data: ProjectCreate, current_manager: User = Depends(get_current_active_manager)):
-    db_project = Project.model_validate(project_data)
-    session.add(db_project)
-    session.commit()
-    session.refresh(db_project)
-    return db_project
-
+# --- TASK MANAGEMENT ---
 @app.post("/tasks", response_model=TaskRead)
-def create_task(*, session: Session = Depends(get_session), task_data: TaskCreate, current_manager: User = Depends(get_current_active_manager)):
+def create_task(*, session: Session = Depends(get_session), task_data: TaskCreate, manager: User = Depends(get_current_active_manager)):
     if not session.get(Project, task_data.project_id): raise HTTPException(404, "Project not found")
-    if task_data.assignee_id and not session.get(User, task_data.assignee_id): raise HTTPException(404, "User not found")
+    if not session.get(User, task_data.assignee_id): raise HTTPException(404, "User not found")
     db_task = Task.model_validate(task_data)
     session.add(db_task)
     session.commit()
@@ -202,216 +170,215 @@ def create_task(*, session: Session = Depends(get_session), task_data: TaskCreat
     return db_task
 
 @app.get("/tasks/me", response_model=List[TaskRead])
-def read_my_tasks(session: Session = Depends(get_session), current_user: User = Depends(get_current_user)):
-    return session.exec(select(Task).where(Task.assignee_id == current_user.id)).all()
+def read_my_tasks(session: Session = Depends(get_session), user: User = Depends(get_current_user)):
+    return session.exec(select(Task).where(Task.assignee_id == user.id)).all()
 
 @app.get("/tasks", response_model=List[TaskRead])
-def read_all_tasks(session: Session = Depends(get_session), current_manager: User = Depends(get_current_active_manager)):
+def read_all_tasks(session: Session = Depends(get_session), manager: User = Depends(get_current_active_manager)):
     return session.exec(select(Task)).all()
 
 @app.put("/tasks/{task_id}/complete", response_model=TaskRead)
-def complete_task(*, session: Session = Depends(get_session), task_id: int, link: TaskSubmission, current_user: User = Depends(get_current_user)):
-    db_task = session.get(Task, task_id)
-    if not db_task: raise HTTPException(404, "Task not found")
-    if db_task.assignee_id != current_user.id: raise HTTPException(403, "Bukan tugas Anda")
-    if db_task.status in ["Done", "Reviewed"]: raise HTTPException(400, "Sudah selesai")
-    
-    db_task.status = "Done"
-    db_task.completed_at = datetime.utcnow()
-    db_task.submission_link = link.submission_link
-    session.add(db_task)
+def complete_task(*, session: Session = Depends(get_session), task_id: int, link: TaskSubmission, user: User = Depends(get_current_user)):
+    task = session.get(Task, task_id)
+    if not task or task.assignee_id != user.id: raise HTTPException(404, "Tugas tidak valid")
+    task.status = "Done"
+    task.completed_at = datetime.utcnow()
+    task.submission_link = link.submission_link
+    session.add(task)
     session.commit()
-    session.refresh(db_task)
-    return db_task
+    session.refresh(task)
+    return task
 
 @app.put("/tasks/{task_id}/review", response_model=TaskRead)
-def review_task(*, session: Session = Depends(get_session), task_id: int, review_data: TaskReview, current_manager: User = Depends(get_current_active_manager)):
-    db_task = session.get(Task, task_id)
-    if not db_task: raise HTTPException(404, "Task not found")
-    if db_task.status == "To Do": raise HTTPException(400, "Tugas belum selesai")
+def review_task(*, session: Session = Depends(get_session), task_id: int, review: TaskReview, manager: User = Depends(get_current_active_manager)):
+    task = session.get(Task, task_id)
+    if not task: raise HTTPException(404, "Task not found")
     
-    if review_data.action == "revise":
-        db_task.status = "Need Revision"
-        db_task.feedback = review_data.feedback
-        db_task.rating = None 
-    elif review_data.action == "approve":
-        if review_data.rating is None: raise HTTPException(400, "Rating wajib diisi untuk ACC")
-        db_task.status = "Reviewed"
-        db_task.rating = review_data.rating
-        db_task.feedback = review_data.feedback
-    else:
-        raise HTTPException(400, "Action tidak valid")
-
-    session.add(db_task)
+    if review.action == "revise":
+        task.status = "Need Revision"
+        task.feedback = review.feedback
+        task.rating = None
+        task.revision_count += 1 
+    elif review.action == "approve":
+        if review.rating is None: raise HTTPException(400, "Rating wajib diisi")
+        task.status = "Reviewed"
+        task.rating = review.rating
+        task.feedback = review.feedback
+    
+    session.add(task)
     session.commit()
-    session.refresh(db_task)
-    return db_task
+    session.refresh(task)
+    return task
 
-# --- 7. LLM REPORTING ---
+# --- PROJECT ---
+@app.post("/projects", response_model=ProjectRead)
+def create_project(*, session: Session = Depends(get_session), p: ProjectCreate, manager: User = Depends(get_current_active_manager)):
+    project = Project.model_validate(p)
+    session.add(project)
+    session.commit()
+    session.refresh(project)
+    return project
+
+# --- AI GENERATION ---
+
 KPI_TARGETS = {
-    "GD": 6, "JO": 2, "SMO": 6, "PH": 1, "EPM": 3, "CC": 3, "VO": 0,
-    "FA": 0, "PR": 2, "Staf": 0, "Pimpinan": 0, "PM": 0, "Default": 5
+    "GD": 6, "JO": 2, "SMO": 6, "PH": 1, "EPM": 3, "CC": 3, "VO": 0, "FA": 0, "PR": 2, "Default": 5
 }
 
-# Fungsi pembersih JSON
 def clean_json_string(json_str: str) -> str:
     json_str = json_str.strip()
-    if json_str.startswith("```json"):
-        json_str = json_str[7:]
-    elif json_str.startswith("```"):
-        json_str = json_str[3:]
-    if json_str.endswith("```"):
-        json_str = json_str[:-3]
+    if json_str.startswith("```json"): json_str = json_str[7:]
+    elif json_str.startswith("```"): json_str = json_str[3:]
+    if json_str.endswith("```"): json_str = json_str[:-3]
     return json_str.strip()
 
-# --- PROMPT INDIVIDU LENGKAP & JELAS ---
-def create_kpi_prompt(user_name: str, divisi: str, kpi_data: dict) -> str:
-    return f"""
-    Anda adalah Manajer HR. Evaluasi kinerja: {user_name} (Divisi: {divisi}).
-    
-    DATA KINERJA:
-    - Target KPI: {kpi_data['kpi_target']}
-    - Aktual Selesai: {kpi_data['total_tasks']}
-    - Deadline Tepat: {kpi_data['on_time_percentage']}%
-    - Rating: {kpi_data['avg_rating']} / 5
-    - Feedback: {kpi_data['feedbacks']}
-    
-    INSTRUKSI NARASI (WAJIB 3 Bagian):
-    1. Paragraf 1: Evaluasi General (Ringkasan).
-    2. Paragraf 2: Evaluasi Keberhasilan (Kekuatan).
-    3. Paragraf 3: Evaluasi Kekurangan & Saran.
-    
-    OUTPUT WAJIB JSON MURNI:
-    {{
-        "narrative_report": "Tulis narasi 3 paragraf di sini...",
-        "chart_data": {{
-            "label": "Total Tugas Selesai",
-            "actual": {kpi_data['total_tasks']}, 
-            "target": {kpi_data['kpi_target']}
-        }},
-        "value_scores": [
-            {{ 
-                "value_name": "Creative", 
-                "score": 0, 
-                "justification": "Berikan analisis skor 1-5 berdasarkan rating kualitas dan feedback kreatif." 
-            }},
-            {{ 
-                "value_name": "Integrity", 
-                "score": 0, 
-                "justification": "Berikan analisis skor 1-5 berdasarkan kepatuhan deadline dan kejujuran." 
-            }},
-            {{ 
-                "value_name": "Resilient", 
-                "score": 0, 
-                "justification": "Berikan analisis skor 1-5 berdasarkan lead time dan ketahanan kerja." 
-            }},
-            {{ 
-                "value_name": "Collaborative", 
-                "score": 0, 
-                "justification": "Berikan analisis skor 1-5 berdasarkan feedback komunikasi tim." 
-            }},
-            {{ 
-                "value_name": "Innovative", 
-                "score": 0, 
-                "justification": "Berikan analisis skor 1-5 berdasarkan inisiatif baru dalam feedback." 
-            }}
-        ]
-    }}
-    """
+# --- PROMPT INDIVIDU ---
+def create_kpi_prompt_advanced(user_name: str, divisi: str, kpi_data: dict) -> str:
+    prompt_structure = {
+        "system_instruction": {
+            "role_definition": f"Anda adalah Analis Kinerja Senior untuk Tim Media PIH. Evaluasi: {user_name} ({divisi}). Gunakan gaya bahasa profesional, objektif, dan bernada membimbing (mentorship-oriented).",
+            "scoring_guideline": {
+                "rubric": {
+                    "1": "Sangat Buruk: Terlambat parah atau feedback negatif keras.",
+                    "3": "Cukup/Standar: Memenuhi ekspektasi dasar.",
+                    "5": "Sempurna (Exceed Expectations): Inovatif, tanpa revisi, dipuji eksplisit."
+                }
+            },
+            "input_context": {
+                "task_data": kpi_data,
+                "core_values_logic": {
+                    "Integrity": "Cek 'on_time_percentage'. Tinggi = Skor Tinggi.",
+                    "Resilient": "Cek 'revision_history'. Jika ada revisi TAPI akhirnya selesai = Skor 4 (Apresiasi). Jika 0 revisi = Skor 5.",
+                    "Creative": "Analisis sentimen pada 'feedbacks'. Kata kunci: bagus, estetik, rapi.",
+                    "Collaborative": "Cek feedback untuk responsivitas komunikasi.",
+                    "Innovative": "Hanya beri Skor 5 jika ada kata 'ide baru', 'inisiatif'."
+                }
+            },
+            "response_requirement": {
+                "format_constraint": "HANYA KEMBALIKAN JSON VALID. JANGAN ADA TEKS LAIN.",
+                "output_schema": {
+                    "narrative_report": "3 paragraf (General, Kekuatan, Saran)",
+                    "chart_data": {
+                        "label": "Total Tugas Selesai",
+                        "actual": kpi_data['total_tasks'],
+                        "target": kpi_data['kpi_target']
+                    },
+                    "value_scores": [
+                        {"value_name": "Creative", "score": 0, "justification": "..."},
+                        {"value_name": "Integrity", "score": 0, "justification": "..."},
+                        {"value_name": "Resilient", "score": 0, "justification": "..."},
+                        {"value_name": "Collaborative", "score": 0, "justification": "..."},
+                        {"value_name": "Innovative", "score": 0, "justification": "..."}
+                    ]
+                }
+            }
+        }
+    }
+    return json.dumps(prompt_structure, indent=2)
 
+# --- PROMPT DIVISI ---
+def create_division_kpi_prompt_advanced(divisi: str, kpi_data: dict) -> str:
+    prompt_structure = {
+        "system_instruction": {
+            "role_definition": f"Anda adalah Kepala Divisi Strategi. Evaluasi Kinerja Kolektif Divisi: {divisi}.",
+            "scoring_guideline": {
+                "rubric": "Analisis berdasarkan rata-rata performa seluruh anggota divisi."
+            },
+            "input_context": {
+                "division_data": kpi_data,
+                "logic": "Bandingkan 'total_tasks' vs 'kpi_target_total'. Analisis tren dari 'feedbacks' kolektif."
+            },
+            "response_requirement": {
+                "format_constraint": "HANYA KEMBALIKAN JSON VALID.",
+                "output_schema": {
+                    "narrative_report": "3 paragraf (Performa Tim, Dinamika Kolaborasi, Rekomendasi Strategis)",
+                    "chart_data": {
+                        "label": "Total Tugas Divisi",
+                        "actual": kpi_data['total_tasks'],
+                        "target": kpi_data['kpi_target_total']
+                    },
+                    "value_scores": [
+                        {"value_name": "Creative", "score": 0, "justification": "Analisis rata-rata kreativitas tim."},
+                        {"value_name": "Integrity", "score": 0, "justification": "Analisis kedisiplinan tim secara umum."},
+                        {"value_name": "Resilient", "score": 0, "justification": "Ketahanan tim menghadapi beban kerja."},
+                        {"value_name": "Collaborative", "score": 0, "justification": "Kualitas kerjasama internal tim."},
+                        {"value_name": "Innovative", "score": 0, "justification": "Terobosan yang dihasilkan divisi ini."}
+                    ]
+                }
+            }
+        }
+    }
+    return json.dumps(prompt_structure, indent=2)
+
+# --- ENDPOINT LAPORAN INDIVIDU ---
 @app.post("/generate-report")
-async def generate_report(request: ReportRequest, session: Session = Depends(get_session), current_manager: User = Depends(get_current_active_manager)):
+async def generate_report(request: ReportRequest, session: Session = Depends(get_session), manager: User = Depends(get_current_active_manager)):
     user = session.get(User, request.user_id)
     if not user: raise HTTPException(404, "User not found")
+    
     try:
         start = date.fromisoformat(request.start_date)
         end = date.fromisoformat(request.end_date)
     except: raise HTTPException(400, "Format tanggal salah")
 
     tasks = session.exec(select(Task).where(
-        Task.assignee_id == request.user_id, Task.status == "Reviewed",
-        Task.completed_at >= start, Task.completed_at <= end
+        Task.assignee_id == request.user_id, 
+        Task.status == "Reviewed",
+        Task.completed_at >= start, 
+        Task.completed_at <= end
     )).all()
 
-    if not tasks: raise HTTPException(404, "Tidak ada tugas Reviewed")
+    if not tasks: raise HTTPException(404, "Tidak ada data tugas (Reviewed) pada periode ini")
 
     total = len(tasks)
     on_time = 0
     lead_secs = 0
     ratings = []
     feedbacks = []
+    revision_counts = []
 
     for t in tasks:
-        comp_date = t.completed_at.date() if isinstance(t.completed_at, datetime) else t.completed_at
         if t.completed_at and t.created_at:
             c_at = t.created_at if isinstance(t.created_at, datetime) else datetime.combine(t.created_at, datetime.min.time())
             cmp_at = t.completed_at if isinstance(t.completed_at, datetime) else datetime.combine(t.completed_at, datetime.min.time())
             lead_secs += (cmp_at - c_at).total_seconds()
+        
         if t.due_date:
             due = t.due_date.date() if isinstance(t.due_date, datetime) else t.due_date
-            if comp_date and due and comp_date <= due: on_time += 1
+            comp = t.completed_at.date() if isinstance(t.completed_at, datetime) else t.completed_at
+            if comp <= due: on_time += 1
+            
         if t.rating: ratings.append(t.rating)
         if t.feedback: feedbacks.append(t.feedback)
+        revision_counts.append(t.revision_count)
 
     avg_lead = (lead_secs / total / 86400) if total > 0 else 0
     avg_rate = (sum(ratings) / len(ratings)) if ratings else 0
     on_time_pct = (on_time / total * 100) if total > 0 else 0
     target = KPI_TARGETS.get(user.divisi, 5)
 
-    kpi_data = { "start_date": request.start_date, "end_date": request.end_date, "total_tasks": total, "kpi_target": target, "avg_lead_time_days": avg_lead, "avg_rating": avg_rate, "on_time_percentage": on_time_pct, "feedbacks": feedbacks }
+    kpi_data = { 
+        "total_tasks": total, 
+        "kpi_target": target, 
+        "avg_rating": round(avg_rate, 1), 
+        "on_time_percentage": round(on_time_pct, 1), 
+        "feedbacks": feedbacks,
+        "revision_history": revision_counts 
+    }
 
     try:
         model = genai.GenerativeModel('models/gemini-2.5-flash')
-        response = await model.generate_content_async(create_kpi_prompt(user.nama, user.divisi, kpi_data), generation_config={"response_mime_type": "application/json"})
+        response = await model.generate_content_async(
+            create_kpi_prompt_advanced(user.nama, user.divisi, kpi_data), 
+            generation_config={"response_mime_type": "application/json"}
+        )
         return json.loads(clean_json_string(response.text))
     except Exception as e:
-        raise HTTPException(500, f"LLM Error: {str(e)}")
+        raise HTTPException(500, f"AI Error: {str(e)}")
 
-# --- PROMPT DIVISI LENGKAP & JELAS ---
-def create_division_kpi_prompt(divisi: str, kpi_data: dict) -> str:
-    return f"""
-    Evaluasi Divisi: {divisi}. Data: {kpi_data}.
-    
-    OUTPUT WAJIB JSON MURNI:
-    {{
-        "narrative_report": "Tulis 3 paragraf (General, Keberhasilan, Saran).",
-        "chart_data": {{ 
-            "label": "Total Tugas Divisi", 
-            "actual": {kpi_data['total_tasks']}, 
-            "target": {kpi_data['kpi_target_total']} 
-        }},
-        "value_scores": [
-            {{ 
-                "value_name": "Creative", 
-                "score": 0, 
-                "justification": "Analisis skor kolektif divisi untuk Kreativitas." 
-            }},
-            {{ 
-                "value_name": "Integrity", 
-                "score": 0, 
-                "justification": "Analisis skor kolektif divisi untuk Integritas/Deadline." 
-            }},
-            {{ 
-                "value_name": "Resilient", 
-                "score": 0, 
-                "justification": "Analisis skor kolektif divisi untuk Ketahanan/Lead Time." 
-            }},
-            {{ 
-                "value_name": "Collaborative", 
-                "score": 0, 
-                "justification": "Analisis skor kolektif divisi untuk Kolaborasi Tim." 
-            }},
-            {{ 
-                "value_name": "Innovative", 
-                "score": 0, 
-                "justification": "Analisis skor kolektif divisi untuk Inovasi." 
-            }}
-        ]
-    }}
-    """
-
+# --- ENDPOINT LAPORAN DIVISI ---
 @app.post("/generate-report/division")
-async def generate_division_report(request: DivisionReportRequest, session: Session = Depends(get_session), current_manager: User = Depends(get_current_active_manager)):
+async def generate_division_report(request: DivisionReportRequest, session: Session = Depends(get_session), manager: User = Depends(get_current_active_manager)):
     try:
         start = date.fromisoformat(request.start_date)
         end = date.fromisoformat(request.end_date)
@@ -419,27 +386,36 @@ async def generate_division_report(request: DivisionReportRequest, session: Sess
 
     users = session.exec(select(User).where(User.divisi == request.divisi)).all()
     if not users: raise HTTPException(404, "Divisi kosong")
+    
     u_ids = [u.id for u in users]
-    tasks = session.exec(select(Task).where(Task.assignee_id.in_(u_ids), Task.status == "Reviewed", Task.completed_at >= start, Task.completed_at <= end)).all()
-    if not tasks: raise HTTPException(404, "Tidak ada tugas Reviewed")
+    tasks = session.exec(select(Task).where(
+        Task.assignee_id.in_(u_ids), 
+        Task.status == "Reviewed", 
+        Task.completed_at >= start, 
+        Task.completed_at <= end
+    )).all()
+    
+    if not tasks: raise HTTPException(404, "Tidak ada tugas Reviewed di divisi ini")
 
     total = len(tasks)
     on_time = 0
     lead_secs = 0
     ratings = []
     feedbacks = []
+    total_revisions = 0 
 
     for t in tasks:
-        comp_date = t.completed_at.date() if isinstance(t.completed_at, datetime) else t.completed_at
         if t.completed_at and t.created_at:
             c_at = t.created_at if isinstance(t.created_at, datetime) else datetime.combine(t.created_at, datetime.min.time())
             cmp_at = t.completed_at if isinstance(t.completed_at, datetime) else datetime.combine(t.completed_at, datetime.min.time())
             lead_secs += (cmp_at - c_at).total_seconds()
         if t.due_date:
             due = t.due_date.date() if isinstance(t.due_date, datetime) else t.due_date
-            if comp_date and due and comp_date <= due: on_time += 1
+            comp = t.completed_at.date() if isinstance(t.completed_at, datetime) else t.completed_at
+            if comp <= due: on_time += 1
         if t.rating: ratings.append(t.rating)
         if t.feedback: feedbacks.append(t.feedback)
+        total_revisions += t.revision_count
 
     avg_lead = (lead_secs / total / 86400) if total > 0 else 0
     avg_rate = (sum(ratings) / len(ratings)) if ratings else 0
@@ -447,11 +423,25 @@ async def generate_division_report(request: DivisionReportRequest, session: Sess
     interns = sum(1 for u in users if u.role == 'intern')
     target_total = KPI_TARGETS.get(request.divisi, 5) * interns
 
-    kpi_data = { "start_date": request.start_date, "end_date": request.end_date, "total_members": interns, "total_tasks": total, "kpi_target_total": target_total, "avg_lead_time_days": avg_lead, "avg_rating": avg_rate, "on_time_percentage": on_time_pct, "feedbacks": feedbacks }
+    kpi_data = { 
+        "start_date": request.start_date, 
+        "end_date": request.end_date, 
+        "total_members": interns, 
+        "total_tasks": total, 
+        "kpi_target_total": target_total, 
+        "avg_lead_time_days": round(avg_lead, 1), 
+        "avg_rating": round(avg_rate, 1), 
+        "on_time_percentage": round(on_time_pct, 1), 
+        "feedbacks": feedbacks,
+        "total_revisions": total_revisions 
+    }
 
     try:
         model = genai.GenerativeModel('models/gemini-2.5-flash')
-        response = await model.generate_content_async(create_division_kpi_prompt(request.divisi, kpi_data), generation_config={"response_mime_type": "application/json"})
+        response = await model.generate_content_async(
+            create_division_kpi_prompt_advanced(request.divisi, kpi_data), 
+            generation_config={"response_mime_type": "application/json"}
+        )
         return json.loads(clean_json_string(response.text))
     except Exception as e:
         raise HTTPException(500, f"LLM Error: {str(e)}")
