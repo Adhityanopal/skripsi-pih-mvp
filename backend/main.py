@@ -174,7 +174,7 @@ def read_my_tasks(session: Session = Depends(get_session), user: User = Depends(
     return session.exec(select(Task).where(Task.assignee_id == user.id)).all()
 
 @app.get("/tasks", response_model=List[TaskRead])
-def read_all_tasks(session: Session = Depends(get_session), manager: User = Depends(get_current_active_manager)):
+def read_all_tasks(session: Session = Depends(get_session), user: User = Depends(get_current_user)):
     return session.exec(select(Task)).all()
 
 @app.put("/tasks/{task_id}/complete", response_model=TaskRead)
