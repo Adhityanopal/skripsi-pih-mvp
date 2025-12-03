@@ -2,19 +2,14 @@ import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import {
   Box, Heading, Text, Button, Spinner, Alert, AlertIcon,
-  List, ListItem, Flex, Spacer, Tag, Badge, ButtonGroup,
+  Flex, Spacer, Tag, Badge, ButtonGroup,
   Tabs, TabList, TabPanels, Tab, TabPanel, Tooltip,
-  Input, InputGroup, InputLeftElement, IconButton, useDisclosure, useToast,
-  Table, Thead, Tbody, Tr, Th, Td 
+  Input, InputGroup, InputLeftElement, IconButton, useDisclosure,
+  Table, Thead, Tbody, Tr, Th, Td
 } from '@chakra-ui/react';
-
-// Impor Ikon
 import { 
-  CheckCircleIcon, TimeIcon, CheckIcon, AddIcon, 
-  StarIcon, EditIcon, InfoIcon, WarningTwoIcon, RepeatIcon, SearchIcon 
+  CheckIcon, AddIcon, EditIcon, InfoIcon, RepeatIcon, SearchIcon 
 } from '@chakra-ui/icons'; 
-
-// Impor Komponen Modal & Fitur
 import AddTaskForm from '../components/AddTaskForm';
 import ReviewTaskForm from '../components/ReviewTaskForm';
 import CompleteTaskModal from '../components/CompleteTaskModal';
@@ -26,8 +21,12 @@ const API_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000';
 
 // --- KONFIGURASI BOBOT SORTING ---
 const PRIORITY_ORDER = { 'Urgent': 1, 'High': 2, 'Medium': 3, 'Low': 4 };
-// Urutan Status: To Do & Revisi (Paling atas) -> Reviewed -> Done (Paling bawah)
-const STATUS_ORDER_WEIGHT = { 'To Do': 1, 'Need Revision': 1, 'Reviewed': 2, 'Done': 3 };
+const STATUS_ORDER_WEIGHT = { 
+    'Done': 1,            
+    'To Do': 2,           
+    'Need Revision': 2,   
+    'Reviewed': 3         
+};
 
 function DashboardPage({ user, usersList, onLogout }) { 
   // --- STATE ---
@@ -63,12 +62,11 @@ function DashboardPage({ user, usersList, onLogout }) {
     }
   };
 
-  // Ambil data saat komponen dimuat atau user berubah
   useEffect(() => {
     if (user) fetchTasks(); 
   }, [user]);
 
-  // --- FUNGSI UPDATE LOKAL (Optimistic UI) ---
+  // --- UPDATE LOKAL (Optimistic UI) ---
   const updateLocalTask = (updatedTask) => {
     setTasks(prev => prev.map(t => t.id === updatedTask.id ? updatedTask : t));
   };
@@ -99,11 +97,10 @@ function DashboardPage({ user, usersList, onLogout }) {
     if (filterStatus === 'to_do') return status === 'To Do';
     if (filterStatus === 'revision') return status === 'Need Revision';
     
-    // Gabungan Done & Reviewed untuk tab "Selesai" agar tidak terlalu banyak tab
+    // Tab "Perlu Review / Selesai" digabung agar rapi, atau dipisah sesuai kebutuhan
     if (filterStatus === 'finished') return status === 'Done' || status === 'Reviewed';
     
-    // 'all' = tampilkan semua
-    return true;
+    return true; // 'all'
   });
 
   // Filter Search
@@ -115,17 +112,20 @@ function DashboardPage({ user, usersList, onLogout }) {
     );
   }
 
-  // --- LOGIKA SORTING (URUTAN) ---
+  // --- LOGIKA SORTING CANGGIH (UPDATED) ---
   filteredTasks.sort((a, b) => {
+    // 1. Sort berdasarkan Status (Done > To Do > Reviewed)
     const statusWeightA = STATUS_ORDER_WEIGHT[a.status] || 99;
     const statusWeightB = STATUS_ORDER_WEIGHT[b.status] || 99;
     if (statusWeightA !== statusWeightB) return statusWeightA - statusWeightB;
     
+    // 2. Jika status sama, sort berdasarkan Prioritas (Urgent > High > Medium)
     const priorityA = PRIORITY_ORDER[a.priority] || 99;
     const priorityB = PRIORITY_ORDER[b.priority] || 99;
     if (priorityA !== priorityB) return priorityA - priorityB;
     
-    return b.id - a.id;
+    // 3. Jika prioritas sama, sort berdasarkan ID Descending (Tugas Baru di Atas)
+    return b.id - a.id; 
   });
 
   return (
@@ -141,7 +141,6 @@ function DashboardPage({ user, usersList, onLogout }) {
         </Box>
         <Spacer />
         
-        {/* Tombol Tambah (Hanya Manager) */}
         {user?.role !== 'intern' && (
           <Button leftIcon={<AddIcon />} colorScheme='teal' size="sm" onClick={addTaskDisclosure.onOpen}>
             Buat Tugas
@@ -166,7 +165,7 @@ function DashboardPage({ user, usersList, onLogout }) {
           {/* PANEL 1: DAFTAR TUGAS */}
           <TabPanel p={0}>
             
-            {/* TOOLBAR: Filter & Search */}
+            {/* TOOLBAR */}
             <Flex mb={4} gap={4} flexWrap="wrap" alignItems="center">
                 <ButtonGroup size="sm" isAttached variant="outline">
                     <Button onClick={() => setFilterStatus('all')} isActive={filterStatus === 'all'} _active={{ bg: 'teal.600', color: 'white' }}>
@@ -178,11 +177,9 @@ function DashboardPage({ user, usersList, onLogout }) {
                     <Button onClick={() => setFilterStatus('to_do')} isActive={filterStatus === 'to_do'} colorScheme="blue" _active={{ bg: 'blue.500', color: 'white' }}>
                         Aktif (To Do)
                     </Button>
-                    <Button onClick={() => setFilterStatus('revision')} isActive={filterStatus === 'revision'} colorScheme="red" _active={{ bg: 'red.500', color: 'white' }}>
-                        Perlu Revisi ⚠️
-                    </Button>
+                    {/* Badge Done (Penting buat Manajer) */}
                     <Button onClick={() => setFilterStatus('finished')} isActive={filterStatus === 'finished'} colorScheme="green" _active={{ bg: 'green.500', color: 'white' }}>
-                        Selesai (Done)
+                        Selesai / Review
                     </Button>
                 </ButtonGroup>
 
@@ -199,7 +196,7 @@ function DashboardPage({ user, usersList, onLogout }) {
                 </InputGroup>
             </Flex>
             
-            {/* CONTENT */}
+            {/* TABLE CONTENT */}
             {isLoading && <Box textAlign="center" p={10}><Spinner thickness='4px' speed='0.65s' emptyColor='gray.200' color='teal.500' size='xl' /><Text mt={4}>Memuat data...</Text></Box>}
             {error && <Alert status='error'><AlertIcon />{error}</Alert>}
             
@@ -227,15 +224,14 @@ function DashboardPage({ user, usersList, onLogout }) {
                       filteredTasks.map((task) => (
                         <Tr key={task.id} _hover={{ bg: "gray.50" }}>
                           
-                          {/* Judul & Detail */}
+                          {/* Judul */}
                           <Td>
                               <Flex alignItems="center">
-                                  <Text fontWeight="bold" mr={2}>{task.title}</Text>
+                                  <Text fontWeight="medium" mr={2}>{task.title}</Text>
                                   <Tooltip label="Lihat Detail">
                                       <IconButton icon={<InfoIcon />} size="xs" variant="ghost" colorScheme="blue" onClick={() => openDetailModal(task)} />
                                   </Tooltip>
                               </Flex>
-                              {/* Rating Kecil jika sudah dinilai */}
                               {task.status === 'Reviewed' && task.rating && (
                                   <Badge colorScheme="yellow" variant="subtle" size="sm">⭐ {task.rating}/5</Badge>
                               )}
@@ -253,7 +249,7 @@ function DashboardPage({ user, usersList, onLogout }) {
                             </Badge>
                           </Td>
 
-                          {/* Status & Badge Revisi */}
+                          {/* Status */}
                           <Td>
                             <Tag 
                                 size="sm" 
@@ -266,7 +262,7 @@ function DashboardPage({ user, usersList, onLogout }) {
                             >
                                 {task.status}
                             </Tag>
-                            {/* BADGE REVISI (PENTING UNTUK BUKTI) */}
+                            {/* BADGE REVISI */}
                             {task.revision_count > 0 && task.status !== 'Reviewed' && task.status !== 'Done' && (
                                 <Badge ml={1} colorScheme="orange" fontSize="0.6em" variant="solid" borderRadius="full">
                                     {task.revision_count}x
@@ -279,9 +275,9 @@ function DashboardPage({ user, usersList, onLogout }) {
                               {task.due_date ? new Date(task.due_date).toLocaleDateString('id-ID') : '-'}
                           </Td>
 
-                          {/* Tombol Aksi */}
+                          {/* Aksi */}
                           <Td>
-                            {/* Tombol Submit (Hanya untuk Intern Pemilik Tugas & Status Aktif) */}
+                            {/* Intern: Submit */}
                             {user.role === 'intern' && task.assignee_id === user.id && (task.status === 'To Do' || task.status === 'Need Revision') && (
                                 <Tooltip label={task.status === 'Need Revision' ? "Submit Revisi" : "Selesaikan"}>
                                     <IconButton 
@@ -293,10 +289,12 @@ function DashboardPage({ user, usersList, onLogout }) {
                                 </Tooltip>
                             )}
                             
-                            {/* Tombol Review (Hanya Manajer & Status Done) */}
+                            {/* Manajer: Review (Hanya jika Done) */}
                             {user.role !== 'intern' && (task.status === 'Done') && (
                                 <Tooltip label="Review Tugas">
-                                    <IconButton icon={<EditIcon />} size='sm' colorScheme='purple' onClick={() => openReviewModal(task)} />
+                                    <Button size="xs" colorScheme="purple" leftIcon={<EditIcon />} onClick={() => openReviewModal(task)}>
+                                        Review
+                                    </Button>
                                 </Tooltip>
                             )}
                           </Td>
@@ -322,8 +320,7 @@ function DashboardPage({ user, usersList, onLogout }) {
         </TabPanels>
       </Tabs>
 
-      {/* MODAL POPUPS */}
-      {/* Render modal hanya jika user bukan intern untuk menghemat memori, kecuali detail & complete */}
+      {/* MODAL (Render Conditional) */}
       {user?.role !== 'intern' && (
         <>
             <AddTaskForm isOpen={addTaskDisclosure.isOpen} onClose={addTaskDisclosure.onClose} projectId={1} users={usersList ? usersList.filter(u => u.role === 'intern') : []} onTaskAdded={addTaskLocally} />
@@ -331,7 +328,6 @@ function DashboardPage({ user, usersList, onLogout }) {
         </>
       )}
       <CompleteTaskModal isOpen={completeDisclosure.isOpen} onClose={completeDisclosure.onClose} task={currentTask} onTaskCompleted={updateLocalTask} />
-      
       <TaskDetailModal isOpen={detailDisclosure.isOpen} onClose={detailDisclosure.onClose} task={currentTask} />
       
     </Box>
