@@ -79,13 +79,6 @@ function DashboardPage({ user, usersList, onLogout }) {
   const openCompleteModal = (task) => { setCurrentTask(task); completeDisclosure.onOpen(); };
   const openDetailModal = (task) => { setCurrentTask(task); detailDisclosure.onOpen(); };
   
-  // --- HELPER ---
-  const getAssigneeName = (assigneeId) => {
-      if (!usersList) return '...'; 
-      const assignee = usersList.find(u => u.id === assigneeId);
-      return assignee ? assignee.nama : 'Unknown';
-  };
-
   // --- LOGIKA FILTERING ---
   let filteredTasks = tasks.filter(task => {
     const status = task.status ? task.status.trim() : "";
@@ -97,19 +90,25 @@ function DashboardPage({ user, usersList, onLogout }) {
     if (filterStatus === 'to_do') return status === 'To Do';
     if (filterStatus === 'revision') return status === 'Need Revision';
     
-    // Tab "Perlu Review / Selesai" digabung agar rapi, atau dipisah sesuai kebutuhan
+    // Tab "Perlu Review / Selesai" digabung agar rapi
     if (filterStatus === 'finished') return status === 'Done' || status === 'Reviewed';
     
     return true; // 'all'
   });
 
-  // Filter Search
+  // Filter Search (UPDATED LOGIC)
   if (searchKeyword) {
     const lowerKeyword = searchKeyword.toLowerCase();
-    filteredTasks = filteredTasks.filter(task => 
-      task.title.toLowerCase().includes(lowerKeyword) ||
-      getAssigneeName(task.assignee_id).toLowerCase().includes(lowerKeyword)
-    );
+    
+    filteredTasks = filteredTasks.filter(task => {
+      // Ambil nama dari data baru (backend sudah kirim task.assignee)
+      const assigneeName = task.assignee ? task.assignee.nama.toLowerCase() : '';
+      
+      return (
+        task.title.toLowerCase().includes(lowerKeyword) ||
+        assigneeName.includes(lowerKeyword)
+      );
+    });
   }
 
   // --- LOGIKA SORTING CANGGIH (UPDATED) ---
@@ -177,7 +176,6 @@ function DashboardPage({ user, usersList, onLogout }) {
                     <Button onClick={() => setFilterStatus('to_do')} isActive={filterStatus === 'to_do'} colorScheme="blue" _active={{ bg: 'blue.500', color: 'white' }}>
                         Aktif (To Do)
                     </Button>
-                    {/* Badge Done (Penting buat Manajer) */}
                     <Button onClick={() => setFilterStatus('finished')} isActive={filterStatus === 'finished'} colorScheme="green" _active={{ bg: 'green.500', color: 'white' }}>
                         Selesai / Review
                     </Button>
@@ -237,8 +235,16 @@ function DashboardPage({ user, usersList, onLogout }) {
                               )}
                           </Td>
 
-                          {/* PIC */}
-                          <Td>{getAssigneeName(task.assignee_id)}</Td>
+                          {/* PIC (UPDATED) */}
+                          <Td>
+                             {task.assignee ? (
+                                <Badge colorScheme="purple" variant="subtle" px={2} borderRadius="full">
+                                    {task.assignee.nama}
+                                </Badge>
+                             ) : (
+                                <Text fontSize="sm" color="gray.400">Unassigned</Text>
+                             )}
+                          </Td>
 
                           {/* Prioritas */}
                           <Td>

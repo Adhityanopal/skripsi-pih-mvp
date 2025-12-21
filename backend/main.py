@@ -2,6 +2,7 @@ from fastapi import FastAPI, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
 from fastapi.middleware.cors import CORSMiddleware
 from sqlmodel import Session, select, SQLModel, Field
+from sqlalchemy.orm import joinedload
 from typing import Optional, List
 from datetime import datetime, timedelta, date
 import google.generativeai as genai
@@ -66,6 +67,7 @@ class TaskRead(SQLModel):
     revision_count: int
     project_id: int
     assignee_id: int
+    assignee: Optional[UserRead] = None
 
 class TaskSubmission(SQLModel):
     submission_link: str
@@ -167,15 +169,23 @@ def create_task(*, session: Session = Depends(get_session), task_data: TaskCreat
     session.add(db_task)
     session.commit()
     session.refresh(db_task)
+    db_task = session.exec(
+        select(Task).where(Task.id == db_task.id).options(joinedload(Task.assignee))
+    ).one()
+    
     return db_task
 
 @app.get("/tasks/me", response_model=List[TaskRead])
 def read_my_tasks(session: Session = Depends(get_session), user: User = Depends(get_current_user)):
-    return session.exec(select(Task).where(Task.assignee_id == user.id)).all()
+    return session.exec(
+        select(Task)
+        .where(Task.assignee_id == user.id)
+        .options(joinedload(Task.assignee))
+    ).all()
 
 @app.get("/tasks", response_model=List[TaskRead])
 def read_all_tasks(session: Session = Depends(get_session), user: User = Depends(get_current_user)):
-    return session.exec(select(Task)).all()
+    return session.exec(select(Task).options(joinedload(Task.assignee))).all()
 
 @app.put("/tasks/{task_id}/complete", response_model=TaskRead)
 def complete_task(*, session: Session = Depends(get_session), task_id: int, link: TaskSubmission, user: User = Depends(get_current_user)):
