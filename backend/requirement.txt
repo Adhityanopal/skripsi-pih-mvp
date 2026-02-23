@@ -1,0 +1,15 @@
+fastapi
+uvicorn
+sqlmodel
+psycopg2-binary
+python-jose
+passlib
+bcrypt
+argon2-cffi
+python-multipart
+google-generativeai
+python-dotenv
+pydantic
+pydantic-settings
+email-validator
+requests
