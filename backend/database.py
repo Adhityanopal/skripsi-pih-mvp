@@ -1,34 +1,37 @@
-# database.py
-# Ini adalah versi FINAL yang kompatibel dengan SQLModel .exec()
+# =================================================================
+# FILE: database.py (VERSI FULL CODE - LAMPIRAN SKRIPSI)
+# FUNGSI: Konfigurasi Mesin Database dan Manajemen Sesi (Session)
+# JUDUL: RANCANG BANGUN SISTEM MANAJEMEN KINERJA TIM MEDIA 
+#        DENGAN INTEGRASI LARGE LANGUAGE MODEL SEBAGAI PENDUKUNG KEPUTUSAN
+# =================================================================
 
-from sqlmodel import create_engine, SQLModel, Session # HANYA impor Session dari sqlmodel
-# HAPUS: from sqlalchemy.orm import sessionmaker
-# HAPUS: from pydantic_settings import BaseSettings (sudah pindah ke config.py)
-
-# Impor settings dari file config.py baru kita
+from sqlmodel import create_engine, SQLModel, Session
 from config import settings 
 
-# Ambil URL langsung dari settings yang diimpor
+# // NOTES: Mengambil URL Database dari variabel environment (config.py) //
 DATABASE_URL = settings.DATABASE_URL 
 
-# Buat 'mesin' yang menghubungkan SQLModel ke DB Anda
-engine = create_engine(DATABASE_URL, echo=True)
-
-# HAPUS: SessionLocal = sessionmaker(...)
+# // NOTES: Inisialisasi Engine Database. 
+# Parameter echo=False digunakan agar terminal server bersih dari log query SQL saat produksi. //
+engine = create_engine(DATABASE_URL, echo=False)
 
 def create_db_and_tables():
-    print("Mencoba membuat tabel...")
+    """
+    Fungsi ini dipanggil saat aplikasi (main.py) pertama kali dijalankan (startup).
+    Bertugas memvalidasi dan mencetak tabel fisik ke dalam database berdasarkan 
+    skema ERD yang telah didefinisikan pada file models.py.
+    """
     try:
         SQLModel.metadata.create_all(engine)
-        print("Tabel berhasil dibuat atau sudah ada.")
+        print("Sistem Database: Sinkronisasi tabel berhasil dilakukan.")
     except Exception as e:
-        print(f"ERROR saat membuat tabel: {e}")
+        print(f"Sistem Database: Terjadi kesalahan saat sinkronisasi tabel -> {e}")
 
-# --- FUNGSI get_session YANG BENAR (WAJIB) ---
-# Ini adalah pola yang direkomendasikan oleh SQLModel
-# untuk memastikan kita mendapatkan 'SQLModel Session' (yang punya .exec())
 def get_session():
-    with Session(engine) as session: # Buat sesi SQLModel langsung dari engine
+    """
+    Fungsi Dependency Injection (DI) yang digunakan oleh setiap endpoint di main.py.
+    Bertugas membuka sesi database saat ada request, dan otomatis menutupnya 
+    (db.close) saat request selesai untuk mencegah kebocoran memori (memory leak).
+    """
+    with Session(engine) as session:
         yield session
-    # Blok 'with' akan otomatis menutup sesi (db.close())
-# -----------------------------------------

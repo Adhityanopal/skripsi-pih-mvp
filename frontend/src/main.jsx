@@ -1,16 +1,15 @@
-// src/main.jsx
-import React from 'react'
-import ReactDOM from 'react-dom/client'
-import App from './App.jsx'
-import { ChakraProvider, extendTheme } from '@chakra-ui/react'
+// =================================================================
+// FILE: main.jsx (VERSI FULL CODE - LAMPIRAN SKRIPSI)
+// FUNGSI: Entry Point Aplikasi Frontend (Vite)
+// =================================================================
 
-// Buat tema dasar (untuk menghindari bug ChakraProvider)
-const theme = extendTheme({});
+import React from 'react';
+import ReactDOM from 'react-dom/client';
+import App from './App.jsx';
 
+// // NOTES: Membungkus seluruh aplikasi dengan StrictMode untuk mendeteksi potensi bug //
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
-    <ChakraProvider theme={theme}>
-      <App />
-    </ChakraProvider>
+    <App />
   </React.StrictMode>,
-)
+);
