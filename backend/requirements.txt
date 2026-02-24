@@ -2,10 +2,8 @@ fastapi
 uvicorn
 sqlmodel
 psycopg2-binary
-python-jose
-passlib
-bcrypt
-argon2-cffi
+python-jose[cryptography]
+passlib[bcrypt]
 python-multipart
 google-generativeai
 python-dotenv
