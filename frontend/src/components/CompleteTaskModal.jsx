@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import {
   Modal, ModalOverlay, ModalContent, ModalHeader, ModalFooter, ModalBody, ModalCloseButton,
-  Button, FormControl, FormLabel, Input, Box, Text, useToast
+  Button, FormControl, FormLabel, Input, Box, Text, useToast, VStack, Alert, AlertIcon
 } from '@chakra-ui/react';
 import axios from 'axios';
 
@@ -27,7 +27,7 @@ function CompleteTaskModal({ isOpen, onClose, task, onTaskCompleted }) {
       // 1. AMBIL TOKEN
       const token = localStorage.getItem('authToken');
 
-      // 2. ENDPOINT DAN BODY DISESUAIKAN DENGAN Amain.py, DITAMBAH HEADER TOKEN
+      // 2. HIT ENDPOINT /complete (Sesuai Amain.py) DENGAN HEADER TOKEN
       const response = await axios.put(`${API_URL}/tasks/${task.id}/complete`, {
         submission_link: submissionLink
       }, {
@@ -39,7 +39,7 @@ function CompleteTaskModal({ isOpen, onClose, task, onTaskCompleted }) {
       onTaskCompleted(response.data); // Update tampilan tabel di background
       
       toast({
-        title: 'Tugas berhasil disubmit!',
+        title: task?.status === 'Need Revision' ? 'Revisi berhasil dikirim!' : 'Tugas berhasil disubmit!',
         status: 'success',
         duration: 3000,
         isClosable: true,
@@ -65,43 +65,58 @@ function CompleteTaskModal({ isOpen, onClose, task, onTaskCompleted }) {
     <Modal isOpen={isOpen} onClose={onClose} size="md" isCentered>
       <ModalOverlay bg='blackAlpha.300' backdropFilter='blur(3px)' />
       <ModalContent as="form" onSubmit={handleSubmit}>
-        <ModalHeader>Submit Tugas</ModalHeader>
+        <ModalHeader>
+          {task?.status === 'Need Revision' ? "Submit Revisi Tugas" : "Submit Tugas"}
+        </ModalHeader>
         <ModalCloseButton />
         
         <ModalBody pb={6}>
-          {/* Instruksi Tugas (Hanya Baca) - DIKEMBALIKAN SEPERTI ASLINYA */}
-          <FormControl>
-            <FormLabel>Instruksi Tugas</FormLabel>
-            <Box 
-              p={3} 
-              borderWidth="1px" 
-              borderRadius="md" 
-              bg="gray.50" 
-              borderColor="gray.200"
-              maxHeight="150px"
-              overflowY="auto"
-            >
-              <Text whiteSpace="pre-wrap" fontSize="sm" color="gray.700">
-                {task?.description || 'Tidak ada deskripsi tugas.'}
-              </Text>
-            </Box>
-          </FormControl>
+          <VStack spacing={4} align="stretch">
+            {/* Instruksi Tugas (Hanya Baca) */}
+            <FormControl>
+              <FormLabel>Instruksi Tugas</FormLabel>
+              <Box 
+                p={3} 
+                borderWidth="1px" 
+                borderRadius="md" 
+                bg="gray.50" 
+                borderColor="gray.200"
+                maxHeight="150px"
+                overflowY="auto"
+              >
+                <Text whiteSpace="pre-wrap" fontSize="sm" color="gray.700">
+                  {task?.description || 'Tidak ada deskripsi tugas.'}
+                </Text>
+              </Box>
+            </FormControl>
 
-          {/* Input Link Hasil */}
-          <FormControl mt={4} isRequired>
-            <FormLabel>Link Hasil</FormLabel>
-            <Input 
-              placeholder="https://..." 
-              value={submissionLink} 
-              onChange={(e) => setSubmissionLink(e.target.value)} 
-              bg="white"
-            />
-          </FormControl>
+            {/* Notif jika statusnya perlu revisi */}
+            {task?.status === 'Need Revision' && (
+              <Alert status='error' variant='left-accent' borderRadius="md">
+                <AlertIcon />
+                <Box>
+                  <Text fontWeight="bold" fontSize="sm">Catatan Revisi:</Text>
+                  <Text fontSize="xs">{task.feedback}</Text>
+                </Box>
+              </Alert>
+            )}
+
+            {/* Input Link Hasil */}
+            <FormControl isRequired>
+              <FormLabel>Link Hasil</FormLabel>
+              <Input 
+                placeholder="https://..." 
+                value={submissionLink} 
+                onChange={(e) => setSubmissionLink(e.target.value)} 
+                bg="white"
+              />
+            </FormControl>
+          </VStack>
         </ModalBody>
 
         <ModalFooter>
-          {/* Tombol batal dihapus, sisa tombol Submit di kanan */}
-          <Button colorScheme="teal" type="submit" isLoading={isLoading}>
+          {/* Tombol Batal Dihapus sesuai permintaan */}
+          <Button colorScheme="teal" type="submit" isLoading={isLoading} width="full">
             Submit
           </Button>
         </ModalFooter>
