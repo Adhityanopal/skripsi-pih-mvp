@@ -107,13 +107,13 @@ function UserManagement({ users, onRefresh }) {
             <FormControl mb={3}><FormLabel>Password</FormLabel><Input value={password} onChange={(e)=>setPassword(e.target.value)}/></FormControl>
             <FormControl mb={3}><FormLabel>Role</FormLabel>
                 <Select value={role} onChange={(e)=>setRole(e.target.value)}>
-                    <option value="intern">Intern</option><option value="staf_media">Staf</option><option value="pm">PM</option><option value="pimpinan">Pimpinan</option>
+                  <option value="intern">Intern</option><option value="staf media">Staf Media</option><option value="team lead">Team Lead</option><option value="kepala pih & koordinator">Kepala PIH & Koordinator</option>
                 </Select>
             </FormControl>
             <FormControl mb={3}><FormLabel>Divisi</FormLabel>
                 <Select value={divisi} onChange={(e)=>setDivisi(e.target.value)}>
-                    <option value="GD">GD</option><option value="JO">JO</option><option value="Staf">Staf</option><option value="PM">PM</option>
-                    <option value="SMO">SMO</option><option value="CC">CC</option><option value="PH">PH</option><option value="VO">VO</option><option value="EPM">EPM</option><option value="FA">FA</option><option value="PR">PR</option><option value="Pimpinan">Pimpinan</option>
+                    <option value="GD">GD</option><option value="JO">JO</option>
+                    <option value="SMO">SMO</option><option value="CC">CC</option><option value="PH">PH</option><option value="VO">VO</option><option value="EPM">EPM</option><option value="FA">FA</option><option value="PR">PR</option><option value="Manajemen">Manajemen</option>
                 </Select>
             </FormControl>
           </ModalBody>

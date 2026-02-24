@@ -73,7 +73,7 @@ function LoginPage({ onLogin }) { // Terima prop onLogin dari App.jsx
           <Heading>Login Sistem</Heading>
           
           <FormControl isRequired isInvalid={!!error}>
-            <FormLabel>Email (Username)</FormLabel>
+            <FormLabel>Email</FormLabel>
             <Input 
               type="email" 
               value={email}

@@ -1,69 +1,72 @@
 import React, { useState, useEffect } from 'react';
 import {
   Modal, ModalOverlay, ModalContent, ModalHeader, ModalFooter, ModalBody, ModalCloseButton,
-  FormControl, FormLabel, Button, VStack, useToast, Textarea, 
-  Radio, RadioGroup, Stack, Box, Text, Alert, AlertIcon,
-  Flex // <-- INI YANG HILANG SEBELUMNYA (PENTING!)
+  Button, FormControl, FormLabel, Textarea, useToast, RadioGroup, Radio, Stack,
+  HStack, IconButton, Text, Input, InputGroup, InputRightElement, Flex, VStack
 } from '@chakra-ui/react';
+import { StarIcon } from '@chakra-ui/icons';
 import axios from 'axios';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000';
 
 function ReviewTaskForm({ isOpen, onClose, task, onTaskReviewed }) {
-  const [rating, setRating] = useState('5');
+  const [decision, setDecision] = useState('acc'); // 'acc' atau 'revision'
+  const [rating, setRating] = useState(0);
   const [feedback, setFeedback] = useState('');
-  const [action, setAction] = useState('approve'); // 'approve' atau 'revise'
   const [isLoading, setIsLoading] = useState(false);
   const toast = useToast();
 
   useEffect(() => {
-    if (task) {
-      setRating(task.rating ? task.rating.toString() : '5');
-      setFeedback(task.feedback || '');
-      setAction('approve'); // Default reset ke approve
+    if (isOpen) {
+      setDecision('acc');
+      setRating(0);
+      setFeedback('');
     }
-  }, [task]);
+  }, [isOpen, task]);
 
-  const handleSubmit = async () => {
-    // Validasi: Jika revisi, wajib ada feedback
-    if (!feedback && action === 'revise') {
-        toast({
-          title: "Wajib isi catatan revisi!", 
-          description: "Beritahu intern apa yang salah.", 
-          status: "warning", 
-          position: "top"
-        });
-        return;
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+
+    if (decision === 'acc' && rating === 0) {
+      toast({ title: 'Mohon berikan rating (1-5)', status: 'warning', duration: 2000 });
+      return;
     }
-    
+    if (decision === 'revision' && !feedback.trim()) {
+      toast({ title: 'Catatan revisi wajib diisi', status: 'warning', duration: 2000 });
+      return;
+    }
+
     setIsLoading(true);
-    const reviewData = {
-      action: action,
-      feedback: feedback,
-      rating: action === 'approve' ? parseInt(rating) : null // Revisi tidak punya rating
-    };
 
     try {
-      const response = await axios.put(`${API_URL}/tasks/${task.id}/review`, reviewData);
-      
-      const msgTitle = action === 'approve' ? "Tugas Dinilai & Selesai" : "Dikembalikan untuk Revisi";
-      const msgStatus = action === 'approve' ? "success" : "info";
+      const updatedData = {
+        ...task,
+        status: decision === 'acc' ? 'Reviewed' : 'Need Revision',
+        rating: decision === 'acc' ? rating : null,
+        feedback: feedback,
+        revision_count: decision === 'revision' ? (task.revision_count || 0) + 1 : task.revision_count
+      };
 
-      toast({ 
-        title: msgTitle, 
-        status: msgStatus, 
-        duration: 3000, 
-        isClosable: true, 
-        position: "top" 
-      });
+      const response = await axios.put(`${API_URL}/tasks/${task.id}`, updatedData);
       onTaskReviewed(response.data); 
-      onClose();
-    } catch (err) {
-      console.error("Error:", err);
-      toast({ 
-        title: "Gagal", 
-        description: "Terjadi kesalahan saat menyimpan review.", 
-        status: "error" 
+
+      toast({
+        title: decision === 'acc' ? 'Tugas berhasil dinilai!' : 'Permintaan revisi dikirim.',
+        status: 'success',
+        duration: 3000,
+        isClosable: true,
+        position: 'top-right'
+      });
+
+      onClose(); 
+    } catch (error) {
+      toast({
+        title: 'Gagal mengirim review.',
+        description: error.response?.data?.detail || error.message,
+        status: 'error',
+        duration: 3000,
+        isClosable: true,
+        position: 'top-right'
       });
     } finally {
       setIsLoading(false);
@@ -71,78 +74,98 @@ function ReviewTaskForm({ isOpen, onClose, task, onTaskReviewed }) {
   };
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} isCentered size="md">
-      <ModalOverlay />
-      <ModalContent>
-        <ModalHeader>Review Pekerjaan</ModalHeader>
+    <Modal isOpen={isOpen} onClose={onClose} size="md" isCentered>
+      <ModalOverlay bg='blackAlpha.300' backdropFilter='blur(3px)' />
+      <ModalContent as="form" onSubmit={handleSubmit}>
+        <ModalHeader>Review Hasil Pekerjaan</ModalHeader>
         <ModalCloseButton />
-        <ModalBody>
-          <VStack spacing={5} align="stretch">
-            
-            {/* Pilihan Aksi: Terima atau Revisi */}
-            <FormControl>
-              <FormLabel fontWeight="bold">Keputusan Manajer</FormLabel>
-              <RadioGroup onChange={setAction} value={action}>
-                <Stack direction='row' spacing={4} p={3} borderWidth={1} borderRadius="md">
-                  <Radio value='approve' colorScheme='green'>✅ ACC & Nilai</Radio>
-                  <Radio value='revise' colorScheme='red'>⚠️ Minta Revisi</Radio>
-                </Stack>
-              </RadioGroup>
-            </FormControl>
+        
+        <ModalBody pb={6}>
+          <FormControl mb={4}>
+            <FormLabel>Link hasil pekerjaan</FormLabel>
+            <InputGroup size="md">
+              <Input 
+                isReadOnly
+                value={task?.submission_link || 'Tidak ada link yang disubmit.'} 
+                bg="gray.50"
+              />
+              {task?.submission_link && (
+                <InputRightElement width="4.5rem">
+                  <Button h="1.75rem" size="sm" as="a" href={task.submission_link} target="_blank" rel="noopener noreferrer" colorScheme="blue" variant="ghost">
+                    Buka
+                  </Button>
+                </InputRightElement>
+              )}
+            </InputGroup>
+          </FormControl>
 
-            {/* Input Rating (Likert Scale 1-5) - HANYA MUNCUL JIKA APPROVE */}
-            {action === 'approve' ? (
-              <FormControl as="fieldset" p={4} bg="yellow.50" borderRadius="md">
-                <FormLabel as="legend" fontWeight="bold" mb={3}>Rating Kualitas (1-5)</FormLabel>
+          <FormControl as="fieldset" mb={4}>
+            <FormLabel as="legend">Keputusan</FormLabel>
+            <RadioGroup value={decision} onChange={setDecision}>
+              <Stack direction='row' spacing={5}>
+                <Radio value='acc' colorScheme='green'>ACC & Nilai</Radio>
+                <Radio value='revision' colorScheme='red'>Minta Revisi</Radio>
+              </Stack>
+            </RadioGroup>
+          </FormControl>
+
+          {decision === 'acc' ? (
+            <>
+              <FormControl mb={4} isRequired>
+                <FormLabel>Rating</FormLabel>
                 
-                {/* UI Likert Scale dengan Pointer Radio */}
-                <RadioGroup onChange={setRating} value={rating}>
-                  <Stack direction="row" spacing={0} justify="space-between">
-                    {['1', '2', '3', '4', '5'].map((val) => (
-                      <Box key={val} textAlign="center" cursor="pointer">
-                        <Radio value={val} size="lg" colorScheme="yellow" mb={1}></Radio>
-                        <Text fontSize="xs" fontWeight="bold">{val}</Text>
-                      </Box>
+                <VStack align="stretch" spacing={1} mt={2} px={2}>
+                  {/* Bintang dibentangkan merata */}
+                  <HStack justify="space-between" w="100%">
+                    {[1, 2, 3, 4, 5].map((star) => (
+                      <IconButton
+                        key={star}
+                        icon={<StarIcon />}
+                        colorScheme={star <= rating ? 'yellow' : 'gray'}
+                        variant={star <= rating ? 'solid' : 'outline'}
+                        onClick={() => setRating(star)}
+                        aria-label={`Rate ${star} stars`}
+                        size="md"
+                        isRound
+                      />
                     ))}
-                  </Stack>
-                </RadioGroup>
+                  </HStack>
+                  
+                  {/* Label batas bawah dan atas diletakkan presisi di bawah bintang ujung */}
+                  <Flex justify="space-between">
+                    <Text fontSize="xs" color="gray.500" fontWeight="semibold">Kurang Baik</Text>
+                    <Text fontSize="xs" color="gray.500" fontWeight="semibold">Sempurna</Text>
+                  </Flex>
+                </VStack>
                 
-                {/* Bagian ini menggunakan Flex, makanya tadi error */}
-                <Flex justify="space-between" mt={1}>
-                    <Text fontSize="xs" color="gray.500">Kurang</Text>
-                    <Text fontSize="xs" color="gray.500">Sempurna</Text>
-                </Flex>
               </FormControl>
-            ) : (
-               <Alert status='warning' variant='subtle' borderRadius="md">
-                 <AlertIcon />
-                 Tugas akan dikembalikan ke status "Perlu Revisi". Rating tidak akan dicatat.
-               </Alert>
-            )}
 
-            <FormControl isRequired>
-              <FormLabel fontWeight="bold">
-                {action === 'approve' ? "Feedback / Apresiasi" : "Catatan Revisi (Wajib)"}
-              </FormLabel>
-              <Textarea
+              <FormControl isRequired mt={4}>
+                <FormLabel>Feedback</FormLabel>
+                <Textarea 
+                  placeholder="Kerja bagus, pertahankan..."
+                  value={feedback}
+                  onChange={(e) => setFeedback(e.target.value)}
+                  rows={3}
+                />
+              </FormControl>
+            </>
+          ) : (
+            <FormControl isRequired mt={4}>
+              <FormLabel>Feedback Revisi</FormLabel>
+              <Textarea 
+                placeholder="Tolong perbaiki bagian X, warnanya kurang sesuai..."
                 value={feedback}
                 onChange={(e) => setFeedback(e.target.value)}
-                placeholder={action === 'approve' ? "Kerja bagus, pertahankan..." : "Tolong perbaiki bagian X, warnanya kurang sesuai..."}
                 rows={4}
-                borderColor={action === 'revise' ? "red.300" : "gray.200"}
               />
             </FormControl>
-          </VStack>
+          )}
         </ModalBody>
 
         <ModalFooter>
-          <Button variant='ghost' mr={3} onClick={onClose}>Batal</Button>
-          <Button 
-            colorScheme={action === 'approve' ? 'green' : 'red'} 
-            onClick={handleSubmit} 
-            isLoading={isLoading}
-          >
-            {action === 'approve' ? 'Simpan Penilaian' : 'Kirim Permintaan Revisi'}
+          <Button colorScheme={decision === 'acc' ? 'green' : 'red'} type="submit" isLoading={isLoading}>
+            Simpan
           </Button>
         </ModalFooter>
       </ModalContent>
