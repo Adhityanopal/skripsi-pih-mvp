@@ -1,10 +1,35 @@
 {
-  "functions": {
-    "api/*.py": {
-      "runtime": "python3.12"
+  "version": 2,
+  "builds": [
+    {
+      "src": "backend/main.py",
+      "use": "@vercel/python"
+    },
+    {
+      "src": "frontend/package.json",
+      "use": "@vercel/static-build"
     }
-  },
-  "env": {
-    "PYTHON_VERSION": "3.12"
-  }
+  ],
+  "rewrites": [
+    {
+      "source": "/token",
+      "destination": "backend/main.py"
+    },
+    {
+      "source": "/users(.*)",
+      "destination": "backend/main.py"
+    },
+    {
+      "source": "/tasks(.*)",
+      "destination": "backend/main.py"
+    },
+    {
+      "source": "/generate-report",
+      "destination": "backend/main.py"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "/frontend/dist/$1"
+    }
+  ]
 }
