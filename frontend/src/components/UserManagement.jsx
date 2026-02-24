@@ -99,7 +99,7 @@ function UserManagement({ users, onRefresh }) {
       <Modal isOpen={isOpen} onClose={onClose}>
         <ModalOverlay />
         <ModalContent>
-          <ModalHeader>{editingUser ? "Edit" : "Tambah"}</ModalHeader>
+          <ModalHeader>{editingUser ? "Edit" : "Tambah User"}</ModalHeader>
           <ModalCloseButton />
           <ModalBody>
             <FormControl mb={3}><FormLabel>Nama</FormLabel><Input value={nama} onChange={(e)=>setNama(e.target.value)}/></FormControl>

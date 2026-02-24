@@ -115,7 +115,7 @@ function DashboardPage({ user, usersList, onLogout }) {
       {/* HEADER UTAMA */}
       <Flex mb={6} alignItems="center" flexWrap="wrap" gap={4}>
         <Box>
-          <Heading size="lg">Dashboard Kinerja PIH</Heading>
+          <Heading size="lg">Dashboard Main</Heading>
           <Text fontSize="md" color="gray.600">
             Halo, <b>{user?.nama}</b> <Badge colorScheme="purple" ml={2}>{user?.role?.toUpperCase()}</Badge>
           </Text>
