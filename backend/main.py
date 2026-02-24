@@ -80,12 +80,19 @@ class TaskReview(SQLModel):
 # --- INISIALISASI APLIKASI ---
 app = FastAPI(title="API Sistem Manajemen Kinerja Tim Media PIH")
 
+app = FastAPI()
+
+origins = [
+    "http://localhost:5173",          # Untuk testing lokal
+    "https://pih-frontend-nine.vercel.app", 
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=origins,            
     allow_credentials=True,
-    allow_methods=["*"], 
-    allow_headers=["*"], 
+    allow_methods=["*"],             
+    allow_headers=["*"],             
 )
 
 genai.configure(api_key=settings.GEMINI_API_KEY)
