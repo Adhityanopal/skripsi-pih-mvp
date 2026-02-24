@@ -1,25 +1,15 @@
 {
   "version": 2,
+  "builds": [
+    {
+      "src": "backend/main.py",
+      "use": "@vercel/python"
+    }
+  ],
   "rewrites": [
     {
-      "source": "/token",
-      "destination": "backend/main.py"
-    },
-    {
-      "source": "/users(.*)",
-      "destination": "backend/main.py"
-    },
-    {
-      "source": "/tasks(.*)",
-      "destination": "backend/main.py"
-    },
-    {
-      "source": "/generate-report",
-      "destination": "backend/main.py"
-    },
-    {
       "source": "/(.*)",
-      "destination": "/frontend/dist/$1"
+      "destination": "/backend/main.py"
     }
   ]
 }
