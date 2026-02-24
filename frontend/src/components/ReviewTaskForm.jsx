@@ -39,15 +39,21 @@ function ReviewTaskForm({ isOpen, onClose, task, onTaskReviewed }) {
     setIsLoading(true);
 
     try {
-      const updatedData = {
-        ...task,
-        status: decision === 'acc' ? 'Reviewed' : 'Need Revision',
-        rating: decision === 'acc' ? rating : null,
+      // SESUAIKAN DENGAN SKEMA BACKEND (Amain.py)
+      const reviewPayload = {
+        action: decision === 'acc' ? 'approve' : 'revise',
         feedback: feedback,
-        revision_count: decision === 'revision' ? (task.revision_count || 0) + 1 : task.revision_count
+        rating: decision === 'acc' ? rating : null
       };
 
-      const response = await axios.put(`${API_URL}/tasks/${task.id}`, updatedData);
+      // AMBIL TOKEN
+      const token = localStorage.getItem('authToken');
+
+      // HIT ENDPOINT REVIEW DENGAN HEADER TOKEN
+      const response = await axios.put(`${API_URL}/tasks/${task.id}/review`, reviewPayload, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      
       onTaskReviewed(response.data); 
 
       toast({
@@ -115,7 +121,6 @@ function ReviewTaskForm({ isOpen, onClose, task, onTaskReviewed }) {
                 <FormLabel>Rating</FormLabel>
                 
                 <VStack align="stretch" spacing={1} mt={2} px={2}>
-                  {/* Bintang dibentangkan merata */}
                   <HStack justify="space-between" w="100%">
                     {[1, 2, 3, 4, 5].map((star) => (
                       <IconButton
@@ -131,7 +136,6 @@ function ReviewTaskForm({ isOpen, onClose, task, onTaskReviewed }) {
                     ))}
                   </HStack>
                   
-                  {/* Label batas bawah dan atas diletakkan presisi di bawah bintang ujung */}
                   <Flex justify="space-between">
                     <Text fontSize="xs" color="gray.500" fontWeight="semibold">Kurang Baik</Text>
                     <Text fontSize="xs" color="gray.500" fontWeight="semibold">Sempurna</Text>
