@@ -80,7 +80,10 @@ app = FastAPI(title="API Sistem Pelaporan Kinerja PIH")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[
+        "http://localhost:5173",               # Agar tetap bisa di-test di komputer lokal
+        "https://pih-frontend-nine.vercel.app" # Alamat Frontend Vercel kamu
+    ],
     allow_credentials=True,
     allow_methods=["*"], 
     allow_headers=["*"], 
@@ -100,7 +103,7 @@ def on_startup():
 @app.post("/token", response_model=Token)
 async def login_for_access_token(session: Session = Depends(get_session), form_data: OAuth2PasswordRequestForm = Depends()):
     user = session.exec(select(User).where(User.email == form_data.username)).first()
-    if not user or not verify_password(form_data.password, user.hashed_password):
+    if not user or not verify_password(form_data.password, user.password):
         raise HTTPException(status_code=401, detail="data yang dimasukkan tidak valid")
     token = create_access_token(data={"sub": user.email})
     return {"access_token": token, "token_type": "bearer"}
