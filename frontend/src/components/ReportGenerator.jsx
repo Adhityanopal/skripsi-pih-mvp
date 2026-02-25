@@ -116,16 +116,16 @@ function ReportGenerator({ users }) {
             <FormLabel>Tipe Laporan</FormLabel>
             <RadioGroup onChange={setReportType} value={reportType}>
               <Stack direction='row' spacing={5}>
-                <Radio value='individu'>Per Individu</Radio>
-                <Radio value='divisi'>Per Divisi</Radio>
+                <Radio value='individu'>Individu</Radio>
+                <Radio value='divisi'>Divisi</Radio>
               </Stack>
             </RadioGroup>
           </FormControl>
 
           {reportType === 'individu' && (
             <FormControl isRequired>
-              <FormLabel>Pilih Pengguna (Intern)</FormLabel>
-              <Select placeholder='Pilih Anggota' value={selectedUserId} onChange={(e) => setSelectedUserId(e.target.value)}>
+              <FormLabel>Pilih Intern</FormLabel>
+              <Select placeholder='' value={selectedUserId} onChange={(e) => setSelectedUserId(e.target.value)}>
                 {users && users.filter(u => u.role === 'intern').map(user => (
                   <option key={user.id} value={user.id}>{user.nama} ({user.divisi})</option>
                 ))}
@@ -150,7 +150,7 @@ function ReportGenerator({ users }) {
               <Input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
             </FormControl>
             <FormControl isRequired>
-              <FormLabel>Sampai Tanggal</FormLabel>
+              <FormLabel>Hingga Tanggal</FormLabel>
               <Input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
             </FormControl>
           </SimpleGrid>

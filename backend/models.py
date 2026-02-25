@@ -3,41 +3,40 @@ from typing import Optional, List
 from datetime import datetime
 
 class User(SQLModel, table=True):
-    id: Optional[int] = Field(default=None, primary_key=True)
-    nama: str = Field(index=True)
-    email: str = Field(unique=True, index=True)
-    hashed_password: str 
-    role: str = Field(index=True) 
-    divisi: str = Field(index=True) 
-    tasks_assigned: List["Task"] = Relationship(back_populates="assignee")
+    __tablename__ = "tbl_user"
+    
+    # Primary Key otomatis ter-index oleh database
+    user_id: str = Field(primary_key=True, max_length=7)
+    nama: str = Field(max_length=30)
+    # Email butuh index karena dipakai untuk pencarian saat Login
+    email: str = Field(unique=True, index=True, max_length=30)
+    password: str = Field(max_length=255)
+    role: str
+    divisi: str 
+    
+    tasks: List["Task"] = Relationship(back_populates="user")
 
-class Project(SQLModel, table=True):
-    id: Optional[int] = Field(default=None, primary_key=True)
-    nama: str = Field(index=True)
-    tasks: List["Task"] = Relationship(back_populates="project")
 
 class Task(SQLModel, table=True):
-    id: Optional[int] = Field(default=None, primary_key=True)
-    title: str
+    __tablename__ = "tbl_task"
+    
+    # Primary Key otomatis ter-index oleh database
+    task_id: str = Field(primary_key=True, max_length=7)
+    
+    # Foreign Key ini KITA INDEX karena sangat sering dicari saat Generate Laporan
+    user_id: str = Field(foreign_key="tbl_user.user_id", index=True, max_length=7) 
+    
+    title: str = Field(max_length=50)
     description: Optional[str] = None 
-    status: str = Field(default="To Do", index=True) 
+    status: str = Field(default="To Do") 
     priority: str = Field(default="Medium")
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    
     due_date: Optional[datetime] = None 
     completed_at: Optional[datetime] = None 
-    submission_link: Optional[str] = None 
     
-    # Input Review
+    submission_link: Optional[str] = Field(default=None, max_length=255)
+    
     rating: Optional[int] = None 
     feedback: Optional[str] = None 
     
-    # Menghitung revisi untuk nilai Resilient
-    revision_count: int = Field(default=0) 
-    
-    # Foreign Keys
-    project_id: int = Field(foreign_key="project.id")
-    assignee_id: int = Field(foreign_key="user.id") 
-    
-    # Relationships
-    project: Project = Relationship(back_populates="tasks")
-    assignee: User = Relationship(back_populates="tasks_assigned")
+    user: Optional[User] = Relationship(back_populates="tasks")

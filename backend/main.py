@@ -9,7 +9,7 @@ import google.generativeai as genai
 import json
 from config import settings
 from database import create_db_and_tables, get_session, engine
-from models import User, Project, Task 
+from models import User, Task 
 from auth import (
     get_password_hash, verify_password, create_access_token, 
     get_current_user, get_current_active_manager, Token
@@ -17,7 +17,7 @@ from auth import (
 
 # --- SKEMA PYDANTIC ---
 class UserRead(SQLModel):
-    id: int
+    user_id: str
     nama: str
     email: str
     role: str
@@ -37,48 +37,36 @@ class UserUpdate(SQLModel):
     role: Optional[str] = None
     divisi: Optional[str] = None
 
-class ProjectCreate(SQLModel):
-    nama: str
-
-class ProjectRead(SQLModel):
-    id: int
-    nama: str
-
 class TaskCreate(SQLModel):
     title: str
-    description: Optional[str] = None
-    priority: Optional[str] = "Medium"
-    due_date: Optional[date] = None
-    assignee_id: int 
-    project_id: int 
+    description:str
+    priority: str = "Medium"
+    due_date: date
+    user_id: str
 
 class TaskRead(SQLModel):
-    id: int
+    task_id: str
+    user_id: str
     title: str
-    description: Optional[str] = None
-    priority: str
+    description: Optional[str]
     status: str
-    created_at: datetime
-    due_date: Optional[date] = None
-    completed_at: Optional[datetime] = None
-    submission_link: Optional[str] = None
-    rating: Optional[int] = None
-    feedback: Optional[str] = None
-    revision_count: int
-    project_id: int
-    assignee_id: int
-    assignee: Optional[UserRead] = None
+    priority: str
+    due_date: Optional[datetime]
+    completed_at: Optional[datetime]
+    submission_link: Optional[str]
+    rating: Optional[int]
+    feedback: Optional[str]
 
 class TaskSubmission(SQLModel):
     submission_link: str
 
 class TaskReview(SQLModel):
-    rating: Optional[int] = Field(default=None, ge=1, le=5)
+    rating: int = Field(..., ge=1, le=5)
     feedback: str
     action: str
 
 class ReportRequest(SQLModel):
-    user_id: int
+    user_id: str
     start_date: str
     end_date: str
 
@@ -113,21 +101,43 @@ def on_startup():
 async def login_for_access_token(session: Session = Depends(get_session), form_data: OAuth2PasswordRequestForm = Depends()):
     user = session.exec(select(User).where(User.email == form_data.username)).first()
     if not user or not verify_password(form_data.password, user.hashed_password):
-        raise HTTPException(status_code=401, detail="Email/Password salah")
+        raise HTTPException(status_code=401, detail="data yang dimasukkan tidak valid")
     token = create_access_token(data={"sub": user.email})
     return {"access_token": token, "token_type": "bearer"}
 
 @app.post("/users", response_model=UserRead)
 def create_user(*, session: Session = Depends(get_session), user_data: UserCreate):
+    # 1. Validasi Keunikan Email & Samakan Pesan Error dengan Laporan (UC-02)
     if session.exec(select(User).where(User.email == user_data.email)).first():
-        raise HTTPException(status_code=400, detail="Email sudah terdaftar")
+        # Ganti pesan detail agar 1:1 dengan Tabel 4.7 di laporanmu
+        raise HTTPException(status_code=400, detail="data yang dimasukkan tidak valid")
+
+    # 2. Logika Auto-Increment USR0001 (Diletakkan SEBELUM instansiasi objek)
+    last_user = session.exec(select(User).order_by(User.user_id.desc())).first()
+    if last_user:
+        # Menghapus kata "USR" lalu mengubah sisa angkanya jadi integer
+        last_num = int(last_user.user_id.replace("USR", ""))
+        new_id = f"USR{last_num + 1:04d}" # Hasilnya misal: USR0002
+    else:
+        new_id = "USR0001"
+
+    # 3. Pengolahan Data Kamus (Dictionary)
     user_dict = user_data.model_dump()
-    user_dict["hashed_password"] = get_password_hash(user_data.password)
-    del user_dict["password"] 
+
+    # --- PERBAIKAN LOGIKA PASSWORD DI SINI ---
+    # Overwrite (timpa) password plain-text dengan hasil hashing.
+    # JANGAN pakai 'del user_dict["password"]' karena kolom di DB sekarang bernama "password"
+    user_dict["password"] = get_password_hash(user_data.password)
+
+    # 4. Masukkan user_id yang baru saja kita generate
+    user_dict["user_id"] = new_id
+
+    # 5. Simpan ke Database
     db_user = User(**user_dict)
     session.add(db_user)
     session.commit()
     session.refresh(db_user)
+    
     return db_user
 
 @app.get("/users/me", response_model=UserRead)
@@ -139,12 +149,15 @@ async def read_users(session: Session = Depends(get_session), manager: User = De
     return session.exec(select(User)).all()
 
 @app.put("/users/{user_id}", response_model=UserRead)
-def update_user(*, session: Session = Depends(get_session), user_id: int, user_update: UserUpdate, manager: User = Depends(get_current_active_manager)):
+def update_user(*, session: Session = Depends(get_session), user_id: str, user_update: UserUpdate, manager: User = Depends(get_current_active_manager)):
     db_user = session.get(User, user_id)
     if not db_user: raise HTTPException(404, "User not found")
     data = user_update.model_dump(exclude_unset=True)
-    if "password" in data:
-        data["hashed_password"] = get_password_hash(data.pop("password"))
+    
+    # PERBAIKAN LOGIKA EDIT PASSWORD
+    if "password" in data and data["password"]: 
+        data["password"] = get_password_hash(data["password"]) # Tetap pakai "password"
+        
     for k, v in data.items(): setattr(db_user, k, v)
     session.add(db_user)
     session.commit()
@@ -152,10 +165,10 @@ def update_user(*, session: Session = Depends(get_session), user_id: int, user_u
     return db_user
 
 @app.delete("/users/{user_id}")
-def delete_user(*, session: Session = Depends(get_session), user_id: int, manager: User = Depends(get_current_active_manager)):
+def delete_user(*, session: Session = Depends(get_session), user_id: str, manager: User = Depends(get_current_active_manager)):
     user = session.get(User, user_id)
     if not user: raise HTTPException(404, "User not found")
-    if user.id == manager.id: raise HTTPException(400, "Tidak bisa hapus diri sendiri")
+    if user.user_id == manager.user_id: raise HTTPException(400, "Tidak bisa hapus diri sendiri")
     session.delete(user)
     session.commit()
     return {"ok": True}
@@ -163,14 +176,32 @@ def delete_user(*, session: Session = Depends(get_session), user_id: int, manage
 # --- TASK MANAGEMENT ---
 @app.post("/tasks", response_model=TaskRead)
 def create_task(*, session: Session = Depends(get_session), task_data: TaskCreate, manager: User = Depends(get_current_active_manager)):
-    if not session.get(Project, task_data.project_id): raise HTTPException(404, "Project not found")
-    if not session.get(User, task_data.assignee_id): raise HTTPException(404, "User not found")
+    # 1. Validasi parameter kosong (Harus 1:1 dengan narasi Use Case)
+    if not task_data.title or not task_data.user_id:
+        raise HTTPException(status_code=400, detail="parameter wajib diisi")
+
+    # 2. Cek apakah user penerima tugas itu ada di database
+    if not session.get(User, task_data.user_id): 
+        raise HTTPException(404, "User not found")
+    
+    # 3. Logika Auto-Increment TSK0001
+    last_task = session.exec(select(Task).order_by(Task.task_id.desc())).first()
+    if last_task:
+        last_num = int(last_task.task_id.replace("TSK", ""))
+        new_id = f"TSK{last_num + 1:04d}"
+    else:
+        new_id = "TSK0001"
+
+    # 4. Memasukkan data ke dalam tabel
     db_task = Task.model_validate(task_data)
+    db_task.task_id = new_id # Timpa task_id dengan ID yang baru digenerate
+    
     session.add(db_task)
     session.commit()
     session.refresh(db_task)
+    
     db_task = session.exec(
-        select(Task).where(Task.id == db_task.id).options(joinedload(Task.assignee))
+        select(Task).where(Task.task_id == db_task.task_id).options(joinedload(Task.user))
     ).one()
     
     return db_task
@@ -179,18 +210,18 @@ def create_task(*, session: Session = Depends(get_session), task_data: TaskCreat
 def read_my_tasks(session: Session = Depends(get_session), user: User = Depends(get_current_user)):
     return session.exec(
         select(Task)
-        .where(Task.assignee_id == user.id)
-        .options(joinedload(Task.assignee))
+        .where(Task.user_id == user.user_id)
+        .options(joinedload(Task.user))
     ).all()
 
 @app.get("/tasks", response_model=List[TaskRead])
 def read_all_tasks(session: Session = Depends(get_session), user: User = Depends(get_current_user)):
-    return session.exec(select(Task).options(joinedload(Task.assignee))).all()
+    return session.exec(select(Task).options(joinedload(Task.user))).all()
 
 @app.put("/tasks/{task_id}/complete", response_model=TaskRead)
-def complete_task(*, session: Session = Depends(get_session), task_id: int, link: TaskSubmission, user: User = Depends(get_current_user)):
+def complete_task(*, session: Session = Depends(get_session), task_id: str, link: TaskSubmission, user: User = Depends(get_current_user)):
     task = session.get(Task, task_id)
-    if not task or task.assignee_id != user.id: raise HTTPException(404, "Tugas tidak valid")
+    if not task or task.user_id != user.user_id: raise HTTPException(404, "Tugas tidak valid")
     task.status = "Done"
     task.completed_at = datetime.utcnow()
     task.submission_link = link.submission_link
@@ -200,7 +231,7 @@ def complete_task(*, session: Session = Depends(get_session), task_id: int, link
     return task
 
 @app.put("/tasks/{task_id}/review", response_model=TaskRead)
-def review_task(*, session: Session = Depends(get_session), task_id: int, review: TaskReview, manager: User = Depends(get_current_active_manager)):
+def review_task(*, session: Session = Depends(get_session), task_id: str, review: TaskReview, manager: User = Depends(get_current_active_manager)):
     task = session.get(Task, task_id)
     if not task: raise HTTPException(404, "Task not found")
     
@@ -208,9 +239,8 @@ def review_task(*, session: Session = Depends(get_session), task_id: int, review
         task.status = "Need Revision"
         task.feedback = review.feedback
         task.rating = None
-        task.revision_count += 1 
     elif review.action == "approve":
-        if review.rating is None: raise HTTPException(400, "Rating wajib diisi")
+        if review.rating is None: raise HTTPException(400, "feedback dan rating wajib diisi")
         task.status = "Reviewed"
         task.rating = review.rating
         task.feedback = review.feedback
@@ -219,15 +249,6 @@ def review_task(*, session: Session = Depends(get_session), task_id: int, review
     session.commit()
     session.refresh(task)
     return task
-
-# --- PROJECT ---
-@app.post("/projects", response_model=ProjectRead)
-def create_project(*, session: Session = Depends(get_session), p: ProjectCreate, manager: User = Depends(get_current_active_manager)):
-    project = Project.model_validate(p)
-    session.add(project)
-    session.commit()
-    session.refresh(project)
-    return project
 
 # --- AI GENERATION ---
 
@@ -248,6 +269,7 @@ def create_kpi_prompt_advanced(user_name: str, divisi: str, kpi_data: dict) -> s
         "system_instruction": {
             "role_definition": f"Anda adalah Analis Kinerja Senior untuk Tim Media PIH. Evaluasi: {user_name} ({divisi}). Gunakan gaya bahasa profesional, objektif, dan bernada membimbing (mentorship-oriented).",
             "scoring_guideline": {
+                "rules": "Gunakan skala 1-5. DILARANG KERAS memberikan skor 0. Jika data tidak ditemukan, berikan skor minimal 1.",
                 "rubric": {
                     "1": "Sangat Buruk: Terlambat parah atau feedback negatif keras.",
                     "3": "Cukup/Standar: Memenuhi ekspektasi dasar.",
@@ -258,7 +280,7 @@ def create_kpi_prompt_advanced(user_name: str, divisi: str, kpi_data: dict) -> s
                 "task_data": kpi_data,
                 "core_values_logic": {
                     "Integrity": "Cek 'on_time_percentage'. Tinggi = Skor Tinggi.",
-                    "Resilient": "Cek 'revision_history'. Jika ada revisi TAPI akhirnya selesai = Skor 4 (Apresiasi). Jika 0 revisi = Skor 5.",
+                    "Resilient": "Analisis dari teks 'feedbacks' dikombinasikan dengan 'on_time_percentage'. Jika feedback sama sekali tidak menyebutkan adanya revisi/perbaikan = Skor 5. Jika feedback menyebutkan ada revisi TAPI persentase tepat waktu tinggi = Skor 4 (tangguh & cepat). Jika ada revisi dan persentase tepat waktu rendah (terlambat) = Skor 1-3.",
                     "Creative": "Analisis sentimen pada 'feedbacks'. Kata kunci: bagus, estetik, rapi.",
                     "Collaborative": "Cek feedback untuk responsivitas komunikasi.",
                     "Innovative": "Hanya beri Skor 5 jika ada kata 'ide baru', 'inisiatif'."
@@ -292,6 +314,7 @@ def create_division_kpi_prompt_advanced(divisi: str, kpi_data: dict) -> str:
         "system_instruction": {
             "role_definition": f"Anda adalah Kepala Divisi Strategi. Evaluasi Kinerja Kolektif Divisi: {divisi}.",
             "scoring_guideline": {
+                "rules": "Gunakan skala 1-5. DILARANG KERAS memberikan skor 0. Jika data tidak ditemukan, berikan skor minimal 1.",
                 "rubric": "Analisis berdasarkan rata-rata performa seluruh anggota divisi."
             },
             "input_context": {
@@ -332,7 +355,7 @@ async def generate_report(request: ReportRequest, session: Session = Depends(get
     except: raise HTTPException(400, "Format tanggal salah")
 
     tasks = session.exec(select(Task).where(
-        Task.assignee_id == request.user_id, 
+        Task.user_id == request.user_id, 
         Task.status == "Reviewed",
         Task.completed_at >= start, 
         Task.completed_at <= end
@@ -345,7 +368,6 @@ async def generate_report(request: ReportRequest, session: Session = Depends(get
     lead_secs = 0
     ratings = []
     feedbacks = []
-    revision_counts = []
 
     for t in tasks:
         if t.completed_at and t.created_at:
@@ -360,7 +382,6 @@ async def generate_report(request: ReportRequest, session: Session = Depends(get
             
         if t.rating: ratings.append(t.rating)
         if t.feedback: feedbacks.append(t.feedback)
-        revision_counts.append(t.revision_count)
 
     avg_lead = (lead_secs / total / 86400) if total > 0 else 0
     avg_rate = (sum(ratings) / len(ratings)) if ratings else 0
@@ -372,8 +393,7 @@ async def generate_report(request: ReportRequest, session: Session = Depends(get
         "kpi_target": target, 
         "avg_rating": round(avg_rate, 1), 
         "on_time_percentage": round(on_time_pct, 1), 
-        "feedbacks": feedbacks,
-        "revision_history": revision_counts 
+        "feedbacks": feedbacks
     }
 
     try:
@@ -384,7 +404,7 @@ async def generate_report(request: ReportRequest, session: Session = Depends(get
         )
         return json.loads(clean_json_string(response.text))
     except Exception as e:
-        raise HTTPException(500, f"AI Error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Gagal memuat analisis, silakan coba lagi di menit berikutnya")
 
 # --- ENDPOINT LAPORAN DIVISI ---
 @app.post("/generate-report/division")
@@ -397,9 +417,9 @@ async def generate_division_report(request: DivisionReportRequest, session: Sess
     users = session.exec(select(User).where(User.divisi == request.divisi)).all()
     if not users: raise HTTPException(404, "Divisi kosong")
     
-    u_ids = [u.id for u in users]
+    u_ids = [u.user_id for u in users]
     tasks = session.exec(select(Task).where(
-        Task.assignee_id.in_(u_ids), 
+        Task.user_id.in_(u_ids), 
         Task.status == "Reviewed", 
         Task.completed_at >= start, 
         Task.completed_at <= end
@@ -412,7 +432,6 @@ async def generate_division_report(request: DivisionReportRequest, session: Sess
     lead_secs = 0
     ratings = []
     feedbacks = []
-    total_revisions = 0 
 
     for t in tasks:
         if t.completed_at and t.created_at:
@@ -425,7 +444,6 @@ async def generate_division_report(request: DivisionReportRequest, session: Sess
             if comp <= due: on_time += 1
         if t.rating: ratings.append(t.rating)
         if t.feedback: feedbacks.append(t.feedback)
-        total_revisions += t.revision_count
 
     avg_lead = (lead_secs / total / 86400) if total > 0 else 0
     avg_rate = (sum(ratings) / len(ratings)) if ratings else 0
@@ -442,8 +460,7 @@ async def generate_division_report(request: DivisionReportRequest, session: Sess
         "avg_lead_time_days": round(avg_lead, 1), 
         "avg_rating": round(avg_rate, 1), 
         "on_time_percentage": round(on_time_pct, 1), 
-        "feedbacks": feedbacks,
-        "total_revisions": total_revisions 
+        "feedbacks": feedbacks
     }
 
     try:
@@ -454,4 +471,4 @@ async def generate_division_report(request: DivisionReportRequest, session: Sess
         )
         return json.loads(clean_json_string(response.text))
     except Exception as e:
-        raise HTTPException(500, f"LLM Error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Gagal memuat analisis, silakan coba lagi di menit berikutnya")
