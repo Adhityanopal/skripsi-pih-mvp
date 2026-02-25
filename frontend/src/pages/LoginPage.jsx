@@ -31,24 +31,19 @@ function LoginPage({ onLogin }) { // Terima prop onLogin dari App.jsx
 
     try {
       // Panggil fungsi handleLogin (dari App.jsx)
-      const success = await onLogin(email, password);
+      const response = await onLogin(email, password);
 
-      if (success) {
+      if (response === true) {
         // Jika sukses, App.jsx akan otomatis mengubah tampilan
-        toast({
-          title: "Login Berhasil.",
-          status: "success",
-          duration: 3000,
-          isClosable: true,
-        });
       } else {
         // Jika gagal (dari App.jsx)
-        throw new Error("Email atau password salah.");
+        setError(response);
+        setIsLoading(false);
       }
 
     } catch (err) {
       // Tangani error
-      setError(err.message || "Email atau password salah.");
+      setError(err.message || "data yang dimasukkan tidak valid");
       setIsLoading(false);
     }
     // Jangan set isLoading(false) di 'finally' agar tombol tetap loading
@@ -78,7 +73,7 @@ function LoginPage({ onLogin }) { // Terima prop onLogin dari App.jsx
               type="email" 
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              placeholder="fad@example.com"
+              placeholder="admin@pih.com"
             />
           </FormControl>
           

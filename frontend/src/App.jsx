@@ -103,9 +103,16 @@ function App() {
 
     } catch (error) {
       console.error("6. ERROR TERJADI:", error);
-      handleLogout(); 
-      return false;
+      handleLogout();
+     // 1. Cek apakah ada pesan spesifik dari FastAPI (Tabel 4.7)
+     if (error.response && error.response.data && error.response.data.detail) {
+      return error.response.data.detail; // Mengirim "data yang dimasukkan tidak valid"
     }
+    
+    // 2. Fallback (Jika server mati/koneksi error)
+    // Kita kembalikan teks yang sama agar tetap sesuai alur Activity Diagram
+    return "data yang dimasukkan tidak valid"; 
+   }
   };
 
   const handleLogout = () => {
