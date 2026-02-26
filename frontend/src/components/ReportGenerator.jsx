@@ -133,7 +133,7 @@ function ReportGenerator({ users }) {
           </FormControl>
 
           {reportType === 'individu' && (
-            <FormControl isRequired>
+            <FormControl>
               <FormLabel>Pilih Intern</FormLabel>
               {/* PERBAIKAN: Placeholder diperjelas agar form tidak nge-bug */}
               <Select placeholder='Pilih Intern...' value={selectedUserId} onChange={(e) => setSelectedUserId(e.target.value)}>
@@ -145,7 +145,7 @@ function ReportGenerator({ users }) {
           )}
 
           {reportType === 'divisi' && (
-            <FormControl isRequired>
+            <FormControl>
               <FormLabel>Pilih Divisi</FormLabel>
               <Select placeholder='Pilih Divisi...' value={selectedDivisi} onChange={(e) => setSelectedDivisi(e.target.value)}>
                 {divisions.map(divisi => (
@@ -156,11 +156,11 @@ function ReportGenerator({ users }) {
           )}
           
           <SimpleGrid columns={2} spacing={4} width="100%">
-            <FormControl isRequired>
+            <FormControl>
               <FormLabel>Dari Tanggal</FormLabel>
               <Input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
             </FormControl>
-            <FormControl isRequired>
+            <FormControl>
               <FormLabel>Hingga Tanggal</FormLabel>
               <Input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
             </FormControl>

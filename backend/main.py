@@ -433,6 +433,10 @@ def create_division_kpi_prompt_advanced(divisi: str, kpi_data: dict) -> str:
 
 @app.post("/generate-report")
 async def generate_report(request: ReportRequest, session: Session = Depends(get_session), manager: User = Depends(get_current_active_manager)):
+    # 1. SATPAM PARAMETER: Pastikan Kepala PIH sudah memilih nama dan tanggal
+    if not request.user_id.strip() or not request.start_date.strip() or not request.end_date.strip():
+        raise HTTPException(status_code=400, detail="parameter wajib diisi")
+
     user = session.get(User, request.user_id)
     if not user: raise HTTPException(404, "User not found")
     
@@ -496,6 +500,10 @@ async def generate_report(request: ReportRequest, session: Session = Depends(get
 
 @app.post("/generate-report/division")
 async def generate_division_report(request: DivisionReportRequest, session: Session = Depends(get_session), manager: User = Depends(get_current_active_manager)):
+    # 1. SATPAM PARAMETER: Pastikan Kepala PIH sudah memilih divisi dan tanggal
+    if not request.divisi.strip() or not request.start_date.strip() or not request.end_date.strip():
+        raise HTTPException(status_code=400, detail="parameter wajib diisi")
+
     try:
         start = date.fromisoformat(request.start_date)
         end = date.fromisoformat(request.end_date)
