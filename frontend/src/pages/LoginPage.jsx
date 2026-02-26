@@ -26,8 +26,15 @@ function LoginPage({ onLogin }) { // Terima prop onLogin dari App.jsx
 
   const handleSubmit = async (event) => {
     event.preventDefault(); // Mencegah form me-refresh halaman
-    setIsLoading(true);
     setError(null); // Reset error setiap kali submit
+
+    // VALIDASI MANUAL: Mencegah popup browser bawaan ("Please fill out this field")
+    if (!email.trim() || !password.trim()) {
+      setError("data yang dimasukkan tidak valid");
+      return;
+    }
+
+    setIsLoading(true);
 
     try {
       // Panggil fungsi handleLogin (dari App.jsx)
@@ -67,7 +74,8 @@ function LoginPage({ onLogin }) { // Terima prop onLogin dari App.jsx
         <VStack spacing={4}>
           <Heading>Login Sistem</Heading>
           
-          <FormControl isRequired isInvalid={!!error}>
+          {/* PERBAIKAN: Hapus isRequired agar popup browser tidak muncul */}
+          <FormControl isInvalid={!!error}>
             <FormLabel>Email</FormLabel>
             <Input 
               type="email" 
@@ -77,7 +85,8 @@ function LoginPage({ onLogin }) { // Terima prop onLogin dari App.jsx
             />
           </FormControl>
           
-          <FormControl isRequired isInvalid={!!error}>
+          {/* PERBAIKAN: Hapus isRequired agar popup browser tidak muncul */}
+          <FormControl isInvalid={!!error}>
             <FormLabel>Password</FormLabel>
             <Input 
               type="password"

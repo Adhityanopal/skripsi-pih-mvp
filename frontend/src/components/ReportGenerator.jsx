@@ -1,11 +1,9 @@
 // src/components/ReportGenerator.jsx
-// VERSI BENAR: Isinya adalah FORM LAPORAN & GRAFIK (Bukan Tabel User)
-
 import React, { useState, useMemo } from 'react';
 import axios from 'axios';
 import {
   Box, Button, FormControl, FormLabel, Select, Input,
-  VStack, Heading, Text, useToast, Spinner, Alert, AlertIcon,
+  VStack, Heading, Text, Spinner, Alert, AlertIcon,
   SimpleGrid, Stat, StatLabel, StatNumber, Flex, Spacer,
   Radio, RadioGroup, Stack
 } from '@chakra-ui/react';
@@ -28,9 +26,8 @@ function ReportGenerator({ users }) {
   const [endDate, setEndDate] = useState('');
   
   const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState(null);
+  const [errorMsg, setErrorMsg] = useState(null); // State error khusus
   const [reportData, setReportData] = useState(null);
-  const toast = useToast();
 
   const divisions = useMemo(() => {
     if (!users || users.length === 0) return [];
@@ -42,46 +39,50 @@ function ReportGenerator({ users }) {
 
   const handleSubmit = async (event) => {
     event.preventDefault();
+    setErrorMsg(null);
+    
+    // Validasi Kosong (Sesuai Diagram)
     if (!startDate || !endDate) {
-        toast({ title: "Tanggal wajib diisi", status: "warning", duration: 3000, isClosable: true });
+        setErrorMsg("data yang dimasukkan tidak valid");
         return;
     }
     
     let endpoint = '';
     let requestBody = {};
-    let isFormValid = false;
 
     if (reportType === 'individu') {
       if (selectedUserId) {
         endpoint = `${API_URL}/generate-report`;
-        requestBody = { user_id: parseInt(selectedUserId), start_date: startDate, end_date: endDate };
-        isFormValid = true;
+        requestBody = { user_id: selectedUserId, start_date: startDate, end_date: endDate };
       } else {
-        toast({ title: "Pengguna wajib dipilih", status: "warning", duration: 3000, isClosable: true });
+        setErrorMsg("data yang dimasukkan tidak valid");
+        return;
       }
     } else {
       if (!selectedDivisi) {
-        toast({ title: "Divisi wajib dipilih", status: "warning", duration: 3000, isClosable: true });
+        setErrorMsg("data yang dimasukkan tidak valid");
         return;
       }
       endpoint = `${API_URL}/generate-report/division`; 
       requestBody = { divisi: selectedDivisi, start_date: startDate, end_date: endDate };
-      isFormValid = true;
     }
 
-    if (!isFormValid) return;
-
     setIsLoading(true);
-    setError(null);
     setReportData(null);
 
     try {
-      const response = await axios.post(endpoint, requestBody);
+      // PERBAIKAN: Kirim Token Login agar tidak di-blokir Backend
+      const token = localStorage.getItem('authToken');
+      
+      const response = await axios.post(endpoint, requestBody, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      
       setReportData(response.data); 
-      toast({ title: "Laporan Siap", status: "success", duration: 3000, isClosable: true, position: "top" });
     } catch (err) {
-      console.error("Error:", err);
-      setError(err.response?.data?.detail || "Gagal generate laporan.");
+      console.error("Error AI:", err);
+      // Tangkap pesan gagal (misal: "Tidak ada data tugas")
+      setErrorMsg("data yang dimasukkan tidak valid");
     } finally {
       setIsLoading(false);
     }
@@ -111,7 +112,16 @@ function ReportGenerator({ users }) {
   return (
     <Box>
       <Box as="form" onSubmit={handleSubmit} p={4} borderWidth={1} borderRadius="md" mb={6}>
-        <VStack spacing={4}>
+        <VStack spacing={4} align="stretch">
+          
+          {/* KOTAK MERAH ERROR */}
+          {errorMsg && (
+            <Alert status="error" borderRadius="md">
+              <AlertIcon />
+              {errorMsg}
+            </Alert>
+          )}
+
           <FormControl>
             <FormLabel>Tipe Laporan</FormLabel>
             <RadioGroup onChange={setReportType} value={reportType}>
@@ -125,9 +135,10 @@ function ReportGenerator({ users }) {
           {reportType === 'individu' && (
             <FormControl isRequired>
               <FormLabel>Pilih Intern</FormLabel>
-              <Select placeholder='' value={selectedUserId} onChange={(e) => setSelectedUserId(e.target.value)}>
+              {/* PERBAIKAN: Placeholder diperjelas agar form tidak nge-bug */}
+              <Select placeholder='Pilih Intern...' value={selectedUserId} onChange={(e) => setSelectedUserId(e.target.value)}>
                 {users && users.filter(u => u.role === 'intern').map(user => (
-                  <option key={user.id} value={user.id}>{user.nama} ({user.divisi})</option>
+                  <option key={user.user_id} value={user.user_id}>{user.nama} ({user.divisi})</option>
                 ))}
               </Select>
             </FormControl>
@@ -136,7 +147,7 @@ function ReportGenerator({ users }) {
           {reportType === 'divisi' && (
             <FormControl isRequired>
               <FormLabel>Pilih Divisi</FormLabel>
-              <Select placeholder='Pilih Divisi' value={selectedDivisi} onChange={(e) => setSelectedDivisi(e.target.value)}>
+              <Select placeholder='Pilih Divisi...' value={selectedDivisi} onChange={(e) => setSelectedDivisi(e.target.value)}>
                 {divisions.map(divisi => (
                   <option key={divisi} value={divisi}>{divisi}</option>
                 ))}
@@ -160,7 +171,6 @@ function ReportGenerator({ users }) {
       </Box>
 
       {isLoading && <Box textAlign="center" p={10}><Spinner size="xl" /><Text mt={4}>Analisis AI sedang berjalan...</Text></Box>}
-      {error && <Alert status='error'><AlertIcon />{error}</Alert>}
 
       {reportData && (
         <Box p={4} borderWidth={1} borderRadius="md" bg="gray.50">
