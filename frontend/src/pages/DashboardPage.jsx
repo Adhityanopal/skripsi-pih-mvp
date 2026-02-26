@@ -113,9 +113,13 @@ function DashboardPage({ user, usersList, onLogout }) {
               <Flex mb={4} gap={4} flexWrap="wrap" alignItems="center">
                   <ButtonGroup size="sm" isAttached variant="outline">
                       <Button onClick={() => setFilterStatus('all')} isActive={filterStatus === 'all'} _active={{ bg: 'teal.600', color: 'white' }}>Semua</Button>
-                      <Button onClick={() => setFilterStatus('my_tasks')} isActive={filterStatus === 'my_tasks'} _active={{ bg: 'teal.600', color: 'white' }}>Tugas Saya</Button>
-                      <Button onClick={() => setFilterStatus('to_do')} isActive={filterStatus === 'to_do'} colorScheme="blue" _active={{ bg: 'blue.500', color: 'white' }}>To Do</Button>
+                      <Button onClick={() => setFilterStatus('to_do')} isActive={filterStatus === 'to_do'} colorScheme="blue" _active={{ bg: 'blue.500', color: 'white' }}>To Do / Need Revision</Button>
                       <Button onClick={() => setFilterStatus('finished')} isActive={filterStatus === 'finished'} colorScheme="green" _active={{ bg: 'green.500', color: 'white' }}>Done / Reviewed</Button>
+                      
+                      {/* LOGIKA KRUSIAL: Filter "Tugas Saya" dipindah ke paling kanan dan HANYA MUNCUL untuk Intern */}
+                      {user?.role === 'intern' && (
+                        <Button onClick={() => setFilterStatus('my_tasks')} isActive={filterStatus === 'my_tasks'} _active={{ bg: 'teal.600', color: 'white' }}>Tugas Saya</Button>
+                      )}
                   </ButtonGroup>
                   
                   <Spacer />
